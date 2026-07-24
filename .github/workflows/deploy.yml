@@ -31,6 +31,16 @@ jobs:
             --exclude='node_modules' --exclude='data' --exclude='.env' \
             ./ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/pfin/"
 
+      - name: Garantir .env no VPS (só na 1ª vez)
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            'set -e; mkdir -p /opt/pfin/data; if [ ! -f /opt/pfin/.env ]; then
+               printf "ACCESS_TOKEN=%s\nJWT_SECRET=%s\nNODE_ENV=production\nPORT=3000\nDB_PATH=data/painel.sqlite\n" \
+                 "trocar-senha" "$(openssl rand -hex 48)" > /opt/pfin/.env;
+               echo "[pfin] .env criado — senha inicial: trocar-senha (troque em Configurações)";
+             else echo "[pfin] .env já existe — mantido"; fi'
+
       - name: Subir container (docker compose)
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
