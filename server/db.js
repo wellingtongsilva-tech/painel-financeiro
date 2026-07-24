@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { hashSecret } from './security.js';
+import { hashSecret, randomToken } from './security.js';
 
 const DB_PATH = resolve(process.env.DB_PATH || 'data/painel.sqlite');
 mkdirSync(dirname(DB_PATH), { recursive: true });
@@ -156,6 +156,13 @@ export function bootstrapSettings() {
   if (getSetting('reminder_tasks_time') === null) setSetting('reminder_tasks_time', '08:00');
   if (getSetting('reminder_bills_days') === null) setSetting('reminder_bills_days', '2');
   if (getSetting('reminder_bills_time') === null) setSetting('reminder_bills_time', '09:00');
+
+  // Canal WhatsApp dos lembretes (via assistente-ops). Ligado por padrão;
+  // é best-effort (só chega dentro da janela de 24h da Meta).
+  if (getSetting('reminder_whatsapp') === null) setSetting('reminder_whatsapp', '1');
+
+  // Chave de API da assistente (consultar + lançar via /api/agent).
+  if (!getSetting('agent_api_key')) setSetting('agent_api_key', randomToken('pfin'));
 }
 
 ensureOwner();

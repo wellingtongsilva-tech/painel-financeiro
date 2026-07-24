@@ -16,3 +16,15 @@ export function verifySecret(secret, stored) {
   const derived = scryptSync(String(secret), salt, expected.length);
   return expected.length === derived.length && timingSafeEqual(expected, derived);
 }
+
+// Token opaco (chave de API da assistente). "pfin_" + 32 bytes hex.
+export function randomToken(prefix = 'pfin') {
+  return `${prefix}_${randomBytes(32).toString('hex')}`;
+}
+
+// Comparação de strings em tempo constante (para a chave de API).
+export function safeEqual(a, b) {
+  const ba = Buffer.from(String(a));
+  const bb = Buffer.from(String(b));
+  return ba.length === bb.length && timingSafeEqual(ba, bb);
+}

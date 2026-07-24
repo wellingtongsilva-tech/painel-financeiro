@@ -39,7 +39,10 @@ jobs:
                printf "ACCESS_TOKEN=%s\nJWT_SECRET=%s\nNODE_ENV=production\nPORT=3000\nDB_PATH=data/painel.sqlite\n" \
                  "trocar-senha" "$(openssl rand -hex 48)" > /opt/pfin/.env;
                echo "[pfin] .env criado — senha inicial: trocar-senha (troque em Configurações)";
-             else echo "[pfin] .env já existe — mantido"; fi'
+             else echo "[pfin] .env já existe — mantido"; fi;
+             grep -q "^OPS_NOTIFY_URL=" /opt/pfin/.env || echo "OPS_NOTIFY_URL=http://127.0.0.1:8765/notify" >> /opt/pfin/.env;
+             grep -q "^OPS_NOTIFY_SECRET=" /opt/pfin/.env || echo "OPS_NOTIFY_SECRET=$(openssl rand -hex 32)" >> /opt/pfin/.env;
+             echo "[pfin] .env: OPS_NOTIFY_* garantidos"'
 
       - name: Subir container (docker compose)
         run: |

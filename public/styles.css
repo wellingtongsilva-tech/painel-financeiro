@@ -296,6 +296,7 @@ small.muted { font-size: .7rem; }
   word-break: break-all; color: var(--text); user-select: all;
 }
 .hint { font-size: .72rem; color: var(--muted); line-height: 1.5; margin: 6px 0 0; }
+.hint code, code { font-family: var(--mono); font-size: .92em; background: var(--surface-2); border: 1px solid var(--border); border-radius: 3px; padding: 1px 5px; color: var(--accent); }
 .status-chip { font-family: var(--mono); font-size: .62rem; letter-spacing: .1em; text-transform: uppercase; padding: 3px 8px; border-radius: 3px; border: 1px solid var(--border); color: var(--muted); }
 .status-chip.on { color: var(--green); border-color: color-mix(in srgb, var(--green) 45%, transparent); }
 .status-chip.off { color: var(--muted); }

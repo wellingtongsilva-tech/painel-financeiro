@@ -226,6 +226,50 @@ async function settingsForm() {
   });
   wrap.appendChild(rem);
 
+  // Integrações (assistente-ops WhatsApp)
+  const integ = el('div');
+  integ.style.marginTop = '22px';
+  let agentKey = (settings.integracoes && settings.integracoes.agentKey) || '';
+  integ.innerHTML = `
+    <div class="card-title" style="margin-bottom:8px">Integrações</div>
+    <p class="hint">A assistente-ops da iaiaBrasil (WhatsApp) usa esta chave para consultar e lançar registros. Cole no arquivo <code>.env</code> da assistente (<code>PAINEL_API_KEY</code>).</p>
+    <div class="codebox" id="agent-key">${esc(agentKey.replace(/^(pfin_.{6}).+(.{4})$/, '$1••••••••$2'))}</div>
+    <div style="display:flex; gap:8px; margin-top:8px">
+      <button type="button" class="add-btn" id="key-show">Mostrar</button>
+      <button type="button" class="add-btn" id="key-copy">Copiar</button>
+      <button type="button" class="add-btn" id="key-regen" style="color:var(--red)">Regenerar</button>
+    </div>
+    <label class="chk" style="margin-top:16px"><input type="checkbox" id="wa-toggle" ${R.whatsapp ? 'checked' : ''} /> Enviar os lembretes também pelo WhatsApp
+      <span class="status-chip ${R.whatsapp ? 'on' : 'off'}" id="wa-chip" style="margin-left:auto">${R.whatsapp ? 'ativo' : 'off'}</span></label>
+    <p class="hint">O push sempre chega. O WhatsApp é enviado pela assistente quando você falou com ela nas últimas 24h (regra da Meta).</p>`;
+  let revealed = false;
+  const keyBox = integ.querySelector('#agent-key');
+  integ.querySelector('#key-show').addEventListener('click', (e) => {
+    revealed = !revealed;
+    keyBox.textContent = revealed ? agentKey : agentKey.replace(/^(pfin_.{6}).+(.{4})$/, '$1••••••••$2');
+    e.target.textContent = revealed ? 'Ocultar' : 'Mostrar';
+  });
+  integ.querySelector('#key-copy').addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText(agentKey); toast('Chave copiada'); }
+    catch { keyBox.textContent = agentKey; revealed = true; toast('Selecione e copie a chave'); }
+  });
+  integ.querySelector('#key-regen').addEventListener('click', async () => {
+    if (!confirm('Gerar uma nova chave? A anterior deixa de funcionar e você precisará atualizar a assistente.')) return;
+    try {
+      const r = await api('settings/agent-key/regenerate', { method: 'POST' });
+      agentKey = r.agentKey; revealed = true; keyBox.textContent = agentKey; toast('Nova chave gerada');
+    } catch (err) { toast(err.message); }
+  });
+  integ.querySelector('#wa-toggle').addEventListener('change', async (e) => {
+    const on = e.target.checked;
+    try {
+      await api('settings', { method: 'PATCH', body: { reminders: { whatsapp: on } } });
+      const chip = integ.querySelector('#wa-chip');
+      chip.textContent = on ? 'ativo' : 'off'; chip.className = 'status-chip ' + (on ? 'on' : 'off');
+    } catch (err) { toast(err.message); e.target.checked = !on; }
+  });
+  wrap.appendChild(integ);
+
   // Trocar senha
   const pwForm = el('form', 'modal-form');
   pwForm.style.marginTop = '22px';

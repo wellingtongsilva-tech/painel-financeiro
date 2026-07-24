@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getSetting, setSetting } from '../db.js';
 import { requireAuth } from '../auth.js';
+import { randomToken } from '../security.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -16,6 +17,10 @@ function snapshot() {
       tasksTime: getSetting('reminder_tasks_time', ''),
       billsDays: parseInt(getSetting('reminder_bills_days', '2'), 10) || 0,
       billsTime: getSetting('reminder_bills_time', ''),
+      whatsapp: getSetting('reminder_whatsapp', '1') === '1',
+    },
+    integracoes: {
+      agentKey: getSetting('agent_api_key', ''),
     },
   };
 }
@@ -48,8 +53,18 @@ router.patch('/', (req, res) => {
     if (Number.isNaN(n) || n < 0 || n > 30) return res.status(400).json({ error: 'Dias inválidos' });
     setSetting('reminder_bills_days', String(n));
   }
+  if (r.whatsapp !== undefined) {
+    setSetting('reminder_whatsapp', r.whatsapp ? '1' : '0');
+  }
 
   res.json(snapshot());
+});
+
+// Gera uma nova chave de API da assistente (invalida a anterior)
+router.post('/agent-key/regenerate', (req, res) => {
+  const key = randomToken('pfin');
+  setSetting('agent_api_key', key);
+  res.json({ agentKey: key });
 });
 
 export default router;

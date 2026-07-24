@@ -77,6 +77,38 @@ export async function sendToAll(payload) {
   return { sent, removed };
 }
 
+// --- Canal WhatsApp (via assistente-ops da iaiaBrasil) ---
+// best-effort: a assistente só entrega texto livre dentro da janela de 24h da
+// Meta; fora disso o push continua sendo o canal garantido.
+const OPS_URL = process.env.OPS_NOTIFY_URL || '';
+const OPS_SECRET = process.env.OPS_NOTIFY_SECRET || '';
+export async function notifyWhatsApp(text) {
+  if (!OPS_URL || !OPS_SECRET) return { skipped: true };
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 6000);
+    const r = await fetch(OPS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Ops-Secret': OPS_SECRET },
+      body: JSON.stringify({ text }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(t);
+    return { ok: r.ok, status: r.status };
+  } catch (err) {
+    console.warn('[wa] notify falhou:', err?.message);
+    return { ok: false, error: err?.message };
+  }
+}
+
+// Entrega um lembrete nos canais ativos: push (sempre) + WhatsApp (se ligado).
+function dispatch(payload) {
+  sendToAll(payload);
+  if (getSetting('reminder_whatsapp', '1') === '1') {
+    notifyWhatsApp(`${payload.title}\n${payload.body}`);
+  }
+}
+
 // --- Fuso local (São Paulo) sem depender do TZ do container ---
 function localNow() {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -151,7 +183,7 @@ function tick() {
       if (t) parts.push(`${t} tarefa(s) para hoje`);
       if (bills) parts.push(`${bills} conta(s) a vencer`);
       const body = parts.length ? parts.join(' · ') : 'Tudo em dia por aqui 🎉';
-      sendToAll({ title: '☀️ Bom dia! Seu dia', body, tag: 'morning' });
+      dispatch({ title: '☀️ Bom dia! Seu dia', body, tag: 'morning' });
       markSent('morning', date);
     }
 
@@ -165,7 +197,7 @@ function tick() {
         const extra = list.length > 3 ? `… +${list.length - 3}` : '';
         const body =
           (overdue ? `${overdue} atrasada(s). ` : '') + `${first}${extra}`;
-        sendToAll({ title: `✅ ${list.length} tarefa(s) para hoje`, body, tag: 'tasks' });
+        dispatch({ title: `✅ ${list.length} tarefa(s) para hoje`, body, tag: 'tasks' });
       }
       markSent('tasks', date); // marca mesmo se vazio: não reavalia o dia todo
     }
@@ -180,7 +212,7 @@ function tick() {
         const key = `bill:${b.id}`;
         if (alreadySent(key, date)) continue;
         const quando = d < 0 ? 'venceu' : d === 0 ? 'vence hoje' : `vence em ${d} dia(s)`;
-        sendToAll({
+        dispatch({
           title: `💸 Conta ${quando}`,
           body: `${b.description || b.category} — ${brl(b.amount)}`,
           tag: key,
@@ -203,7 +235,7 @@ function tick() {
         markSent(key, date);
         continue; // já cumpriu hoje, não incomoda
       }
-      sendToAll({
+      dispatch({
         title: `${h.icon || '⏰'} ${h.name}`,
         body: h.goal > 1 ? `Faltam ${h.goal - count} de ${h.goal} hoje.` : 'Hora de fazer 👍',
         tag: key,
