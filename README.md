@@ -11,6 +11,12 @@ PWA pessoal (instalável, funciona offline) para organizar a rotina diária:
 
 Servido em produção sob **`iaiabrasil.com/pfin`** (caminhos relativos, funciona em subpath).
 
+### Notificações push (lembretes)
+
+O servidor dispara lembretes via **Web Push (VAPID)** — chegam mesmo com o celular fechado. Em **⚙︎ Configurações** você **ativa as notificações no aparelho** e define os horários de: resumo da manhã, tarefas do dia, contas a pagar (X dias antes) e, por hábito, os horários de lembrete. As chaves VAPID são geradas sozinhas no 1º boot e guardadas no banco; o agendador roda no fuso `America/Sao_Paulo`.
+
+> **iPhone:** o push só funciona depois de **instalar o app na Tela de Início** (Safari → Compartilhar → "Adicionar à Tela de Início"), iOS 16.4+. No Android/Chrome funciona no navegador e instalado.
+
 ---
 
 ## Rodar local

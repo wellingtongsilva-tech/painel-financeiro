@@ -20,27 +20,45 @@ router.get('/', (req, res) => {
   res.json(withLogs);
 });
 
+// Normaliza "8:0, 12:30 ; 20h" -> "08:00,12:30" (só HH:MM válidos, ordenados)
+function cleanTimes(v) {
+  if (v == null) return null;
+  const out = String(v)
+    .split(/[,;\s]+/)
+    .map((s) => {
+      const m = /^(\d{1,2}):(\d{2})$/.exec(s.trim());
+      if (!m) return null;
+      const h = Number(m[1]);
+      if (h > 23 || Number(m[2]) > 59) return null;
+      return `${String(h).padStart(2, '0')}:${m[2]}`;
+    })
+    .filter(Boolean);
+  return [...new Set(out)].sort().join(',');
+}
+
 router.post('/', (req, res) => {
-  const { name, icon, goal } = req.body || {};
+  const { name, icon, goal, remind_times } = req.body || {};
   if (!name) return res.status(400).json({ error: 'Nome é obrigatório' });
   const max = db
     .prepare('SELECT COALESCE(MAX(sort_order), -1) AS m FROM habits WHERE user_id = ?')
     .get(req.user.id);
   const info = db
-    .prepare('INSERT INTO habits (user_id, name, icon, goal, sort_order) VALUES (?, ?, ?, ?, ?)')
-    .run(req.user.id, String(name).trim(), icon || '✅', Number(goal) || 1, max.m + 1);
+    .prepare('INSERT INTO habits (user_id, name, icon, goal, sort_order, remind_times) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(req.user.id, String(name).trim(), icon || '✅', Number(goal) || 1, max.m + 1, cleanTimes(remind_times) || '');
   res.json(db.prepare('SELECT * FROM habits WHERE id = ?').get(info.lastInsertRowid));
 });
 
 router.patch('/:id', (req, res) => {
   const habit = getOwned(req);
   if (!habit) return res.status(404).json({ error: 'Hábito não encontrado' });
-  const { name, icon, goal, active } = req.body || {};
-  db.prepare('UPDATE habits SET name = ?, icon = ?, goal = ?, active = ? WHERE id = ?').run(
+  const { name, icon, goal, active, remind_times } = req.body || {};
+  const times = remind_times === undefined ? habit.remind_times : cleanTimes(remind_times);
+  db.prepare('UPDATE habits SET name = ?, icon = ?, goal = ?, active = ?, remind_times = ? WHERE id = ?').run(
     name ?? habit.name,
     icon ?? habit.icon,
     goal ?? habit.goal,
     active ?? habit.active,
+    times,
     habit.id
   );
   res.json(db.prepare('SELECT * FROM habits WHERE id = ?').get(habit.id));

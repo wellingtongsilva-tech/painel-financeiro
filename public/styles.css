@@ -248,3 +248,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); bo
   background: var(--text); color: var(--bg); padding: 10px 18px; border-radius: 999px;
   font-size: .85rem; font-weight: 600; z-index: 80; box-shadow: var(--shadow);
 }
+
+/* ---------- Auxiliares (notificações / lembretes) ---------- */
+.muted { color: var(--muted); font-size: .82rem; margin: 4px 0 0; font-weight: 500; }
+small.muted { font-size: .74rem; }
+.chk { flex-direction: row; align-items: center; gap: 8px; color: var(--text); font-weight: 600; }
+.chk input { width: auto; }

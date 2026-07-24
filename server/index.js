@@ -10,6 +10,8 @@ import tasksRoutes from './routes/tasks.js';
 import financeRoutes from './routes/finance.js';
 import dashboardRoutes from './routes/dashboard.js';
 import settingsRoutes from './routes/settings.js';
+import pushRoutes from './routes/push.js';
+import { startScheduler } from './reminders.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', 'public');
@@ -27,6 +29,7 @@ app.use('/api/tasks', tasksRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/push', pushRoutes);
 
 // --- PWA estática ---
 app.use(express.static(PUBLIC_DIR));
@@ -40,4 +43,5 @@ app.get('*', (req, res, next) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`[painel] rodando em http://localhost:${PORT}`);
+  startScheduler(); // dispara os lembretes push (fuso America/Sao_Paulo)
 });

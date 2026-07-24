@@ -81,11 +81,51 @@ $('#btn-logout').addEventListener('click', async () => {
   showAuth();
 });
 
+/* ---------- push (notificações) ---------- */
+function urlB64ToUint8Array(base64) {
+  const padding = '='.repeat((4 - (base64.length % 4)) % 4);
+  const b64 = (base64 + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(b64);
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+const pushSupported = () =>
+  'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+
+async function currentSubscription() {
+  if (!pushSupported()) return null;
+  const reg = await navigator.serviceWorker.ready;
+  return reg.pushManager.getSubscription();
+}
+async function enablePush() {
+  if (!pushSupported()) throw new Error('Este aparelho/navegador não suporta notificações.');
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') throw new Error('Permissão de notificação negada. Ative nas configurações do navegador.');
+  const { key } = await api('push/vapid');
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlB64ToUint8Array(key),
+    });
+  }
+  await api('push/subscribe', { method: 'POST', body: { subscription: sub.toJSON() } });
+}
+async function disablePush() {
+  const sub = await currentSubscription();
+  if (sub) {
+    await api('push/unsubscribe', { method: 'POST', body: { endpoint: sub.endpoint } }).catch(() => {});
+    await sub.unsubscribe().catch(() => {});
+  }
+}
+
 /* ---------- configurações ---------- */
 $('#btn-settings').addEventListener('click', settingsForm);
 
-function settingsForm() {
+async function settingsForm() {
   const cur = localStorage.getItem(THEME_KEY) || 'system';
+  const settings = await api('settings').catch(() => ({ reminders: {} }));
+  const R = settings.reminders || {};
   const wrap = el('div', 'modal-form');
 
   // Tema
@@ -105,9 +145,90 @@ function settingsForm() {
   themeBlock.appendChild(seg);
   wrap.appendChild(themeBlock);
 
+  // Notificações (push)
+  const notif = el('div');
+  notif.style.marginTop = '22px';
+  notif.innerHTML = '<div class="card-title" style="margin-bottom:8px">Notificações</div>';
+  const notifStatus = el('p', 'muted', 'Verificando…');
+  notif.appendChild(notifStatus);
+  const notifBtn = el('button', 'btn-primary', 'Ativar neste aparelho');
+  notifBtn.type = 'button';
+  const testBtn = el('button', 'add-btn', 'Enviar teste');
+  testBtn.type = 'button';
+  testBtn.style.marginTop = '8px';
+  notif.append(notifBtn, testBtn);
+  wrap.appendChild(notif);
+
+  async function refreshNotif() {
+    if (!pushSupported()) {
+      notifStatus.textContent = 'Este navegador não suporta push. No iPhone: instale o app na Tela de Início (iOS 16.4+).';
+      notifBtn.style.display = 'none';
+      testBtn.style.display = 'none';
+      return;
+    }
+    const sub = await currentSubscription();
+    const on = !!sub && Notification.permission === 'granted';
+    notifStatus.textContent = on
+      ? 'Ativadas neste aparelho ✓'
+      : 'Desativadas. Ative para receber os lembretes.';
+    notifBtn.textContent = on ? 'Desativar neste aparelho' : 'Ativar neste aparelho';
+    notifBtn.className = on ? 'add-btn' : 'btn-primary';
+    testBtn.style.display = on ? '' : 'none';
+  }
+  notifBtn.addEventListener('click', async () => {
+    notifBtn.disabled = true;
+    try {
+      const sub = await currentSubscription();
+      if (sub && Notification.permission === 'granted') { await disablePush(); toast('Notificações desativadas'); }
+      else { await enablePush(); toast('Notificações ativadas'); }
+    } catch (err) { toast(err.message); }
+    notifBtn.disabled = false;
+    refreshNotif();
+  });
+  testBtn.addEventListener('click', async () => {
+    try { const r = await api('push/test', { method: 'POST' }); toast(r.sent ? 'Teste enviado 🔔' : 'Nenhum aparelho inscrito'); }
+    catch (err) { toast(err.message); }
+  });
+  refreshNotif();
+
+  // Horários dos lembretes
+  const rem = el('form', 'modal-form');
+  rem.style.marginTop = '22px';
+  const chk = (on) => (on ? 'checked' : '');
+  rem.innerHTML = `
+    <div class="card-title" style="margin-bottom:0">Horários dos lembretes</div>
+    <label class="chk"><input type="checkbox" name="mOn" ${chk(R.morning)} style="width:auto" /> Resumo da manhã</label>
+    <label>Horário<input type="time" name="mTime" value="${R.morning || '07:00'}" /></label>
+    <label class="chk"><input type="checkbox" name="tOn" ${chk(R.tasksTime)} style="width:auto" /> Tarefas do dia</label>
+    <label>Horário<input type="time" name="tTime" value="${R.tasksTime || '08:00'}" /></label>
+    <label class="chk"><input type="checkbox" name="bOn" ${chk(R.billsTime)} style="width:auto" /> Contas a pagar</label>
+    <div class="row2">
+      <label>Avisar antes<select name="bDays">
+        ${[0,1,2,3,5,7].map((d) => `<option value="${d}" ${Number(R.billsDays)===d?'selected':''}>${d===0?'no dia':d+' dia(s) antes'}</option>`).join('')}
+      </select></label>
+      <label>Horário<input type="time" name="bTime" value="${R.billsTime || '09:00'}" /></label>
+    </div>
+    <button class="btn-primary" type="submit">Salvar lembretes</button>
+    <p class="error" id="rem-msg"></p>`;
+  rem.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const msg = rem.querySelector('#rem-msg');
+    const body = { reminders: {
+      morning: rem.mOn.checked ? rem.mTime.value : '',
+      tasksTime: rem.tOn.checked ? rem.tTime.value : '',
+      billsTime: rem.bOn.checked ? rem.bTime.value : '',
+      billsDays: Number(rem.bDays.value),
+    }};
+    try {
+      await api('settings', { method: 'PATCH', body });
+      msg.style.color = 'var(--green)'; msg.textContent = 'Lembretes salvos.';
+    } catch (err) { msg.style.color = 'var(--red)'; msg.textContent = err.message; }
+  });
+  wrap.appendChild(rem);
+
   // Trocar senha
   const pwForm = el('form', 'modal-form');
-  pwForm.style.marginTop = '20px';
+  pwForm.style.marginTop = '22px';
   pwForm.innerHTML = `
     <div class="card-title" style="margin-bottom:0">Trocar senha de acesso</div>
     <label>Senha atual<input name="current" type="password" required /></label>
@@ -259,11 +380,13 @@ function habitForm(existing) {
       <label>Meta/dia<input name="goal" type="number" min="1" value="${existing?.goal || 1}" /></label>
     </div>
     <label>Nome<input name="name" required value="${esc(existing?.name || '')}" placeholder="Ex.: Beber água" /></label>
+    <label>Lembretes (horários)<input name="remind_times" value="${esc(existing?.remind_times || '')}" placeholder="Ex.: 08:00, 12:00, 18:00" />
+      <small class="muted">Notifica nesses horários se ainda não cumpriu o hábito. Deixe vazio para não lembrar.</small></label>
     <button class="btn-primary" type="submit">${existing ? 'Salvar' : 'Adicionar'}</button>
     ${existing ? '<button type="button" class="add-btn" id="del-habit" style="background:var(--red-soft);color:var(--red)">Excluir hábito</button>' : ''}`;
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const body = { name: form.name.value, icon: form.icon.value, goal: Number(form.goal.value) };
+    const body = { name: form.name.value, icon: form.icon.value, goal: Number(form.goal.value), remind_times: form.remind_times.value };
     if (existing) await api('habits/' + existing.id, { method: 'PATCH', body });
     else await api('habits', { method: 'POST', body });
     closeModal(); toast('Hábito salvo'); render();

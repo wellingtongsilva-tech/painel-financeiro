@@ -76,7 +76,30 @@ db.exec(`
     key   TEXT PRIMARY KEY,
     value TEXT
   );
+
+  -- NOTIFICAÇÕES PUSH: aparelhos inscritos (Web Push / VAPID)
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    endpoint   TEXT NOT NULL UNIQUE,
+    p256dh     TEXT NOT NULL,
+    auth       TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Controle de idempotência: qual lembrete já foi enviado em cada dia
+  CREATE TABLE IF NOT EXISTS notif_sent (
+    key TEXT NOT NULL,   -- ex.: "morning", "tasks", "bill:12", "habit:3:09:00"
+    day TEXT NOT NULL,   -- YYYY-MM-DD (fuso local)
+    PRIMARY KEY (key, day)
+  );
 `);
+
+// --- Migrações leves (idempotentes) ---
+function ensureColumn(table, col, ddl) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+}
+ensureColumn('habits', 'remind_times', 'remind_times TEXT'); // CSV "08:00,12:00"
 
 export function getSetting(key, fallback = null) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
@@ -127,6 +150,12 @@ export function bootstrapSettings() {
     }
   }
   if (!getSetting('theme')) setSetting('theme', 'system');
+
+  // Horários padrão dos lembretes (todos configuráveis no app; "" = desligado)
+  if (getSetting('reminder_morning') === null) setSetting('reminder_morning', '07:00');
+  if (getSetting('reminder_tasks_time') === null) setSetting('reminder_tasks_time', '08:00');
+  if (getSetting('reminder_bills_days') === null) setSetting('reminder_bills_days', '2');
+  if (getSetting('reminder_bills_time') === null) setSetting('reminder_bills_time', '09:00');
 }
 
 ensureOwner();
