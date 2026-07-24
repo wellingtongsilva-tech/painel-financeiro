@@ -1,6 +1,12 @@
 # SQLite nativo do Node (node:sqlite) — sem compilação de módulo nativo
 FROM node:24-alpine
 
+# tzdata: para o TZ=America/Sao_Paulo valer no Alpine (saudação/horas locais).
+# O agendador de lembretes usa Intl (independe disto), mas isto deixa o app
+# inteiro consistente no fuso BR.
+RUN apk add --no-cache tzdata
+ENV TZ=America/Sao_Paulo
+
 WORKDIR /app
 
 # Instala só dependências de produção (todas pure-JS)
