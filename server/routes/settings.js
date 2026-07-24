@@ -21,6 +21,8 @@ function snapshot() {
     },
     integracoes: {
       agentKey: getSetting('agent_api_key', ''),
+      gcalConfigured: !!process.env.GOOGLE_CLIENT_ID,
+      gcalConnected: !!getSetting('gcal_refresh_token'),
     },
   };
 }

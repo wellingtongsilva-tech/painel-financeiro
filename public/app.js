@@ -268,6 +268,31 @@ async function settingsForm() {
       chip.textContent = on ? 'ativo' : 'off'; chip.className = 'status-chip ' + (on ? 'on' : 'off');
     } catch (err) { toast(err.message); e.target.checked = !on; }
   });
+
+  // Google Agenda (somente leitura)
+  const I = settings.integracoes || {};
+  const gcal = el('div');
+  gcal.style.marginTop = '18px';
+  gcal.style.borderTop = '1px solid var(--border)';
+  gcal.style.paddingTop = '16px';
+  if (!I.gcalConfigured) {
+    gcal.innerHTML = `<div class="chk" style="justify-content:space-between">Google Agenda <span class="status-chip off">indisponível</span></div>
+      <p class="hint">Falta configurar as credenciais do Google no servidor.</p>`;
+  } else if (I.gcalConnected) {
+    gcal.innerHTML = `<div class="chk" style="justify-content:space-between">Google Agenda <span class="status-chip on">conectada</span></div>
+      <p class="hint">Os eventos do dia aparecem na tela Hoje.</p>
+      <button type="button" class="add-btn" id="gcal-off" style="color:var(--red); margin-top:8px">Desconectar</button>`;
+    gcal.querySelector('#gcal-off').addEventListener('click', async () => {
+      try { await api('gcal/disconnect', { method: 'POST' }); toast('Agenda desconectada'); settingsForm(); }
+      catch (err) { toast(err.message); }
+    });
+  } else {
+    gcal.innerHTML = `<div class="chk" style="justify-content:space-between">Google Agenda <span class="status-chip off">desconectada</span></div>
+      <p class="hint">Mostra seus eventos do dia na tela Hoje (somente leitura).</p>
+      <button type="button" class="btn-primary" id="gcal-on" style="margin-top:8px">Conectar Google Agenda</button>`;
+    gcal.querySelector('#gcal-on').addEventListener('click', () => { location.href = API + 'gcal/connect'; });
+  }
+  integ.appendChild(gcal);
   wrap.appendChild(integ);
 
   // Trocar senha
@@ -340,6 +365,11 @@ async function renderHoje(v) {
     <div class="stat"><div class="v">${brl(d.financas.saldo)}</div><div class="l">Saldo</div></div>`;
   v.appendChild(fin);
 
+  // agenda do Google (preenchida de forma assíncrona; some se não conectado)
+  const agendaSlot = el('div');
+  v.appendChild(agendaSlot);
+  renderAgenda(agendaSlot);
+
   // autocuidado
   const ac = el('div', 'card');
   ac.appendChild(el('div', 'card-title', `Autocuidado · ${d.autocuidado.feitos}/${d.autocuidado.total}`));
@@ -364,6 +394,23 @@ async function renderHoje(v) {
     d.financas.contasAbertas.forEach((t) => cp.appendChild(pendingRow(t, () => renderHoje(v))));
     v.appendChild(cp);
   }
+}
+
+async function renderAgenda(container) {
+  try {
+    const g = await api('gcal/today');
+    if (!g.connected || !g.eventos.length) return;
+    const card = el('div', 'card');
+    card.appendChild(el('div', 'card-title', 'Agenda de hoje'));
+    g.eventos.forEach((e) => {
+      const row = el('div', 'evt' + (e.diaInteiro ? ' allday' : ''));
+      const hora = e.diaInteiro ? 'dia' : new Date(e.inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      row.innerHTML = `<span class="evt-time">${esc(hora)}</span>
+        <div><div class="evt-title">${esc(e.titulo)}</div>${e.local ? `<div class="tx-cat">${esc(e.local)}</div>` : ''}</div>`;
+      card.appendChild(row);
+    });
+    container.appendChild(card);
+  } catch { /* silencioso: agenda é opcional */ }
 }
 
 /* ============ AUTOCUIDADO ============ */
@@ -673,12 +720,21 @@ function shiftMonth(m, delta) {
 }
 
 /* ---------- boot ---------- */
+function agendaFeedback() {
+  const p = new URLSearchParams(location.search).get('agenda');
+  if (!p) return;
+  const msg = { ok: 'Google Agenda conectada ✓', erro: 'Falha ao conectar a agenda', estado: 'Sessão expirou, tente de novo', sem_refresh: 'Reconecte (sem token de atualização)' }[p] || '';
+  if (msg) setTimeout(() => toast(msg), 300);
+  history.replaceState(null, '', location.pathname); // limpa o ?agenda=
+}
+
 async function boot() {
   try {
     await api('auth/me');
     showApp();
     api('settings').then((s) => applyTheme(s.theme)).catch(() => {});
     switchView('hoje');
+    agendaFeedback();
   } catch {
     showAuth();
   }
