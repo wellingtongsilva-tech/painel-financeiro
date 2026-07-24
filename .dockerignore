@@ -1,0 +1,11 @@
+.git
+.github
+.claude
+node_modules
+data
+*.sqlite
+*.sqlite-*
+.env
+npm-debug.log*
+README.md
+deploy

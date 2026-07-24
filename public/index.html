@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#4f46e5" />
+  <title>Meu Painel</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/icon.svg" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Meu Painel" />
+  <script>
+    (function () {
+      var t = localStorage.getItem('painel-theme');
+      if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Tela de login (token de acesso) -->
+  <div id="auth" class="auth hidden">
+    <div class="auth-card">
+      <div class="brand"><span class="brand-mark">◆</span> Meu Painel</div>
+      <p class="auth-sub">Autocuidado, responsabilidades e finanças no mesmo lugar.</p>
+
+      <form id="form-login" class="auth-form">
+        <label>Token de acesso
+          <input type="password" name="token" autocomplete="current-password" required autofocus placeholder="cole seu token" />
+        </label>
+        <button class="btn-primary" type="submit">Entrar</button>
+      </form>
+
+      <p id="auth-error" class="error"></p>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <div class="topbar-title" id="topbar-title">Hoje</div>
+      <div class="topbar-actions">
+        <button id="btn-settings" class="icon-btn" title="Configurações">⚙︎</button>
+        <button id="btn-logout" class="icon-btn" title="Sair">⏻</button>
+      </div>
+    </header>
+
+    <main id="view" class="view"></main>
+
+    <nav class="tabbar">
+      <button class="tabbar-btn active" data-view="hoje"><span>🏠</span>Hoje</button>
+      <button class="tabbar-btn" data-view="autocuidado"><span>🌿</span>Cuidado</button>
+      <button class="tabbar-btn" data-view="tarefas"><span>✅</span>Tarefas</button>
+      <button class="tabbar-btn" data-view="financas"><span>💰</span>Finanças</button>
+    </nav>
+  </div>
+
+  <!-- Modal genérico -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-head"><h3 id="modal-title"></h3><button id="modal-close" class="icon-btn">✕</button></div>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

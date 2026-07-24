@@ -1,0 +1,14 @@
+# Deploy no VPS: /opt/pfin/docker-compose.yml
+# nginx (fora deste arquivo) faz proxy de iaiabrasil.com/pfin/ -> 127.0.0.1:8090
+services:
+  pfin:
+    build: .
+    image: pfin:latest
+    container_name: pfin
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8090:3000"
+    volumes:
+      - ./data:/app/data

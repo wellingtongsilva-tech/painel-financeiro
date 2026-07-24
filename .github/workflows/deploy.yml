@@ -1,0 +1,48 @@
+name: Deploy (produção)
+
+# Padrão-da-casa (cockpit): promoção manual via botão "Run workflow".
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-pfin
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Preparar chave SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Enviar código (rsync)
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15" \
+            --exclude='.git' --exclude='.github' --exclude='.claude' \
+            --exclude='node_modules' --exclude='data' --exclude='.env' \
+            ./ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/pfin/"
+
+      - name: Subir container (docker compose)
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            'cd /opt/pfin && docker compose up -d --build --wait --wait-timeout 120 && docker compose ps'
+
+      - name: Healthcheck
+        run: |
+          ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            'for i in $(seq 1 15); do curl -fsS http://127.0.0.1:8090/api/health && echo OK && exit 0; sleep 3; done; echo "healthcheck falhou"; exit 1'
+
+      - name: Limpar chave
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

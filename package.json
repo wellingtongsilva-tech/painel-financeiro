@@ -1,0 +1,19 @@
+{
+  "name": "painel-financeiro",
+  "version": "1.0.0",
+  "description": "Painel pessoal (PWA): autocuidado, responsabilidades e organização financeira",
+  "type": "module",
+  "main": "server/index.js",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2"
+  }
+}
