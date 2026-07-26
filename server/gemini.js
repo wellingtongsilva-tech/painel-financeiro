@@ -8,7 +8,9 @@
  *       GEMINI_MODEL (opcional; CSV de modelos a tentar em ordem)
  */
 const KEY = process.env.GEMINI_API_KEY || '';
-const MODELS = (process.env.GEMINI_MODEL || 'gemini-2.0-flash,gemini-flash-latest,gemini-1.5-flash')
+// gemini-flash-latest primeiro: alias que o Google mantém atual (modelos com
+// versão fixa como 2.0-flash/1.5-flash são aposentados e dão 404).
+const MODELS = (process.env.GEMINI_MODEL || 'gemini-flash-latest,gemini-2.5-flash,gemini-pro-latest')
   .split(',').map((s) => s.trim()).filter(Boolean);
 
 export const geminiConfigured = () => !!KEY;
