@@ -157,6 +157,46 @@ router.get('/upcoming', async (req, res) => {
   }
 });
 
+// Eventos de um MÊS inteiro (para o calendário). ?month=YYYY-MM
+router.get('/month', async (req, res) => {
+  if (!isConnected()) return res.json({ connected: false, eventos: [] });
+  try {
+    const token = await accessToken();
+    const month = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month : localDate().slice(0, 7);
+    const [y, mo] = month.split('-').map(Number);
+    const last = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    const timeMin = `${month}-01T00:00:00-03:00`;
+    const timeMax = `${month}-${String(last).padStart(2, '0')}T23:59:59-03:00`;
+    const url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events?' + new URLSearchParams({
+      timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime', maxResults: '250',
+    });
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) {
+      if (r.status === 401) {
+        ['gcal_refresh_token', 'gcal_access_token', 'gcal_token_expiry'].forEach(delSetting);
+        return res.json({ connected: false, eventos: [] });
+      }
+      return res.status(502).json({ error: 'Falha ao ler a agenda' });
+    }
+    const data = await r.json();
+    const eventos = (data.items || []).map((e) => {
+      const dateTime = e.start?.dateTime || null;
+      const allDay = !dateTime;
+      return {
+        titulo: e.summary || '(sem título)',
+        inicio: dateTime,
+        diaInteiro: allDay,
+        local: e.location || null,
+        dia: allDay ? (e.start?.date || null) : dayOf(dateTime),
+      };
+    }).filter((e) => e.dia);
+    res.json({ connected: true, month, eventos });
+  } catch (e) {
+    console.warn('[gcal] month falhou:', e?.message);
+    res.status(502).json({ error: 'Falha ao ler a agenda' });
+  }
+});
+
 // ---------- helpers ----------
 async function exchange(params) {
   const r = await fetch('https://oauth2.googleapis.com/token', {

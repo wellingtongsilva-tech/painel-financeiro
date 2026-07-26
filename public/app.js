@@ -579,9 +579,12 @@ function parseCapture(txt) {
   return { type: 'task', title, due };
 }
 
-/* ============ AGENDA (Google Agenda, próximos dias) ============ */
+/* ============ AGENDA (calendário do mês + eventos do dia) ============ */
+let agendaMonth = new Date().toISOString().slice(0, 7);
+let agendaDay = todayStr();
+
 async function renderAgendaView(v) {
-  const g = await api('gcal/upcoming?days=7').catch(() => ({ connected: false, eventos: [] }));
+  const g = await api('gcal/month?month=' + agendaMonth).catch(() => ({ connected: false, eventos: [] }));
   v.innerHTML = '';
   const head = el('div', 'section-h');
   head.innerHTML = '<h2>Agenda</h2>';
@@ -597,31 +600,62 @@ async function renderAgendaView(v) {
     v.appendChild(card);
     return;
   }
-  if (!g.eventos.length) {
-    v.appendChild(el('div', 'card', '<p class="empty">Sem eventos nos próximos 7 dias.</p>'));
-    return;
-  }
 
   const byDay = {};
-  g.eventos.forEach((e) => { (byDay[e.dia] = byDay[e.dia] || []).push(e); });
-  Object.keys(byDay).sort().forEach((dia) => {
-    const card = el('div', 'card');
-    card.appendChild(el('div', 'card-title', dayHeader(dia)));
-    byDay[dia].forEach((e) => {
-      const row = el('div', 'evt' + (e.diaInteiro ? ' allday' : ''));
-      const hora = e.diaInteiro ? 'dia' : new Date(e.inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      row.innerHTML = `<span class="evt-time">${esc(hora)}</span>
-        <div><div class="evt-title">${esc(e.titulo)}</div>${e.local ? `<div class="tx-cat">${esc(e.local)}</div>` : ''}</div>`;
-      card.appendChild(row);
-    });
-    v.appendChild(card);
+  (g.eventos || []).forEach((e) => { (byDay[e.dia] = byDay[e.dia] || []).push(e); });
+
+  // navegação de mês
+  const calCard = el('div', 'card');
+  const nav = el('div', 'month-nav');
+  const prev = el('button', null, '‹');
+  const next = el('button', null, '›');
+  const label = el('span', 'm-label', monthLabel(agendaMonth));
+  const goMonth = (delta) => {
+    agendaMonth = shiftMonth(agendaMonth, delta);
+    agendaDay = (agendaMonth === todayStr().slice(0, 7)) ? todayStr() : agendaMonth + '-01';
+    renderAgendaView(v);
+  };
+  prev.addEventListener('click', () => goMonth(-1));
+  next.addEventListener('click', () => goMonth(+1));
+  nav.append(prev, label, next);
+  calCard.appendChild(nav);
+
+  // grade do calendário
+  const cal = el('div', 'cal');
+  ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].forEach((w) => cal.appendChild(el('div', 'cal-wd', w)));
+  const [y, mo] = agendaMonth.split('-').map(Number);
+  const startWd = new Date(y, mo - 1, 1).getDay();
+  const daysIn = new Date(y, mo, 0).getDate();
+  for (let i = 0; i < startWd; i++) cal.appendChild(el('div', 'cal-cell empty'));
+  for (let d = 1; d <= daysIn; d++) {
+    const ds = `${agendaMonth}-${String(d).padStart(2, '0')}`;
+    const cls = 'cal-cell' + (ds === todayStr() ? ' today' : '') + (ds === agendaDay ? ' sel' : '') + (byDay[ds] ? ' has' : '');
+    const cell = el('button', cls, String(d) + (byDay[ds] ? '<span class="cal-dot"></span>' : ''));
+    cell.addEventListener('click', () => { agendaDay = ds; renderAgendaView(v); });
+    cal.appendChild(cell);
+  }
+  calCard.appendChild(cal);
+  v.appendChild(calCard);
+
+  // eventos do dia selecionado
+  const dayCard = el('div', 'card');
+  dayCard.appendChild(el('div', 'card-title', agendaDay ? dayHeader(agendaDay) : 'Selecione um dia'));
+  const evs = agendaDay ? (byDay[agendaDay] || []) : [];
+  if (!evs.length) dayCard.appendChild(el('p', 'empty', 'Sem eventos neste dia.'));
+  evs.forEach((e) => {
+    const row = el('div', 'evt' + (e.diaInteiro ? ' allday' : ''));
+    const hora = e.diaInteiro ? 'dia' : new Date(e.inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    row.innerHTML = `<span class="evt-time">${esc(hora)}</span>
+      <div><div class="evt-title">${esc(e.titulo)}</div>${e.local ? `<div class="tx-cat">${esc(e.local)}</div>` : ''}</div>`;
+    dayCard.appendChild(row);
   });
+  v.appendChild(dayCard);
 }
 
 function dayHeader(dia) {
   const today = todayStr();
   const tmr = addDays(today, 1);
-  const label = new Date(dia + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
+  const label = new Date(dia + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
   const prefix = dia === today ? 'Hoje · ' : dia === tmr ? 'Amanhã · ' : '';
   return prefix + label;
 }
