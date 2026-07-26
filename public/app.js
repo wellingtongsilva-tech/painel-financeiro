@@ -325,8 +325,20 @@ async function settingsForm() {
   openModal('Configurações', wrap);
 }
 
+/* ---------- âmbito: PESSOAL × EMPRESA ---------- */
+const AMBITO_KEY = 'painel-ambito';
+let ambito = localStorage.getItem(AMBITO_KEY) === 'empresa' ? 'empresa' : 'pessoal';
+function syncAmbitoButtons() { $$('.amb-btn').forEach((b) => b.classList.toggle('on', b.dataset.amb === ambito)); }
+$$('.amb-btn').forEach((b) => b.addEventListener('click', () => {
+  ambito = b.dataset.amb === 'empresa' ? 'empresa' : 'pessoal';
+  localStorage.setItem(AMBITO_KEY, ambito);
+  syncAmbitoButtons();
+  render();
+}));
+syncAmbitoButtons();
+
 /* ---------- navegação ---------- */
-const TITLES = { hoje: 'Hoje', autocuidado: 'Autocuidado', tarefas: 'Tarefas', financas: 'Finanças' };
+const TITLES = { hoje: 'Agora', autocuidado: 'Rotina', tarefas: 'Tarefas', financas: 'Finanças' };
 let currentView = 'hoje';
 $$('.tabbar-btn').forEach((b) =>
   b.addEventListener('click', () => switchView(b.dataset.view))
@@ -335,6 +347,7 @@ function switchView(view) {
   currentView = view;
   $$('.tabbar-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
   $('#topbar-title').textContent = TITLES[view];
+  $('#ambito-bar').classList.toggle('hidden', view === 'autocuidado'); // rotina é sempre pessoal
   render();
 }
 
@@ -342,7 +355,7 @@ async function render() {
   const v = $('#view');
   v.innerHTML = '<p class="empty">Carregando…</p>';
   try {
-    if (currentView === 'hoje') await renderHoje(v);
+    if (currentView === 'hoje') await renderAgora(v);
     else if (currentView === 'autocuidado') await renderAutocuidado(v);
     else if (currentView === 'tarefas') await renderTarefas(v);
     else if (currentView === 'financas') await renderFinancas(v);
@@ -351,66 +364,194 @@ async function render() {
   }
 }
 
-/* ============ HOJE (dashboard) ============ */
-async function renderHoje(v) {
-  const d = await api('dashboard');
+/* ============ AGORA (tela única de comando) ============ */
+const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+
+async function renderAgora(v) {
+  const d = await api('dashboard?ambito=' + ambito);
   v.innerHTML = '';
-  v.appendChild(el('p', 'hello', `${d.saudacao}! Aqui está o seu dia.`));
 
-  // resumo financeiro
-  const fin = el('div', 'stats');
-  fin.innerHTML = `
-    <div class="stat in"><div class="v">${brl(d.financas.entradas)}</div><div class="l">Entradas</div></div>
-    <div class="stat out"><div class="v">${brl(d.financas.saidas)}</div><div class="l">Saídas</div></div>
-    <div class="stat"><div class="v">${brl(d.financas.saldo)}</div><div class="l">Saldo</div></div>`;
-  v.appendChild(fin);
+  // status resumido
+  const openN = d.tarefas.itens.length;
+  const dueN = d.financas.contasAbertas.length;
+  const status = el('div', 'statusline');
+  status.innerHTML =
+    `<span><i>${openN}</i> pendência${openN === 1 ? '' : 's'}</span>` +
+    (dueN ? `<span class="sep">·</span><span class="warn"><i>${dueN}</i> conta${dueN === 1 ? '' : 's'} aberta${dueN === 1 ? '' : 's'}</span>` : '') +
+    `<span class="sep">·</span><span>saldo <i class="num"${d.financas.saldo < 0 ? ' style="color:var(--neg)"' : ''}>${brl(d.financas.saldo)}</i></span>`;
+  v.appendChild(status);
 
-  // agenda do Google (preenchida de forma assíncrona; some se não conectado)
-  const agendaSlot = el('div');
-  v.appendChild(agendaSlot);
-  renderAgenda(agendaSlot);
+  // captura rápida (o dia todo, em fragmentos)
+  v.appendChild(captureBar());
 
-  // autocuidado
-  const ac = el('div', 'card');
-  ac.appendChild(el('div', 'card-title', `Autocuidado · ${d.autocuidado.feitos}/${d.autocuidado.total}`));
-  const pct = d.autocuidado.total ? Math.round((d.autocuidado.feitos / d.autocuidado.total) * 100) : 0;
-  ac.appendChild(el('div', 'progress-line', `<i style="width:${pct}%"></i>`));
-  if (!d.autocuidado.itens.length) ac.appendChild(el('p', 'empty', 'Nenhum hábito cadastrado.'));
-  d.autocuidado.itens.forEach((h) => ac.appendChild(habitRow(h, () => renderHoje(v))));
-  v.appendChild(ac);
+  // agenda do Google (opcional)
+  let eventos = [];
+  try { const g = await api('gcal/today'); if (g.connected) eventos = g.eventos || []; } catch { /* opcional */ }
 
-  // tarefas do dia
-  const tk = el('div', 'card');
-  const head = el('div', 'card-title', `Tarefas de hoje${d.tarefas.atrasadas ? ` · ${d.tarefas.atrasadas} atrasada(s)` : ''}`);
-  tk.appendChild(head);
-  if (!d.tarefas.itens.length) tk.appendChild(el('p', 'empty', 'Tudo em dia por aqui 🎉'));
-  d.tarefas.itens.forEach((t) => tk.appendChild(taskRow(t, () => renderHoje(v))));
-  v.appendChild(tk);
+  // lista unificada "Agora"
+  const items = buildAgoraItems(d, eventos);
+  const listCard = el('div', 'card');
+  listCard.appendChild(el('div', 'card-title', `Agora <span>${ambito === 'empresa' ? 'Empresa' : 'Pessoal'}</span>`));
+  const list = el('div', 'alist');
+  if (!items.length) list.appendChild(el('p', 'empty', 'Nada urgente agora.'));
+  items.forEach((it) => list.appendChild(agoraRow(it, () => renderAgora(v))));
+  listCard.appendChild(list);
+  v.appendChild(listCard);
 
-  // contas a pagar
-  if (d.financas.contasAbertas.length) {
-    const cp = el('div', 'card');
-    cp.appendChild(el('div', 'card-title', `Contas a pagar · ${brl(d.financas.contasAbertasTotal)}`));
-    d.financas.contasAbertas.forEach((t) => cp.appendChild(pendingRow(t, () => renderHoje(v))));
-    v.appendChild(cp);
-  }
+  // dinheiro compacto
+  const money = el('div', 'money-top');
+  money.innerHTML =
+    `<div class="saldo"><div class="k">Saldo do mês</div><div class="v num ${d.financas.saldo < 0 ? 'neg' : ''}">${brl(d.financas.saldo)}</div></div>
+     <div class="io">
+       <div class="in"><div class="k"><span class="dot"></span>Entrou</div><div class="v">${brl(d.financas.entradas)}</div></div>
+       <div class="out"><div class="k"><span class="dot"></span>Saiu</div><div class="v">${brl(d.financas.saidas)}</div></div>
+     </div>`;
+  v.appendChild(money);
+
+  // rotina (hábitos — sempre pessoal)
+  const rot = el('div', 'card');
+  rot.appendChild(el('div', 'card-title', `Rotina <span>${d.autocuidado.feitos}/${d.autocuidado.total}</span>`));
+  const chips = el('div', 'chips');
+  if (!d.autocuidado.itens.length) chips.appendChild(el('p', 'empty', 'Sem hábitos ainda.'));
+  d.autocuidado.itens.forEach((h) => chips.appendChild(habitChip(h, () => renderAgora(v))));
+  rot.appendChild(chips);
+  v.appendChild(rot);
 }
 
-async function renderAgenda(container) {
-  try {
-    const g = await api('gcal/today');
-    if (!g.connected || !g.eventos.length) return;
-    const card = el('div', 'card');
-    card.appendChild(el('div', 'card-title', 'Agenda de hoje'));
-    g.eventos.forEach((e) => {
-      const row = el('div', 'evt' + (e.diaInteiro ? ' allday' : ''));
-      const hora = e.diaInteiro ? 'dia' : new Date(e.inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      row.innerHTML = `<span class="evt-time">${esc(hora)}</span>
-        <div><div class="evt-title">${esc(e.titulo)}</div>${e.local ? `<div class="tx-cat">${esc(e.local)}</div>` : ''}</div>`;
-      card.appendChild(row);
-    });
-    container.appendChild(card);
-  } catch { /* silencioso: agenda é opcional */ }
+function buildAgoraItems(d, eventos) {
+  const today = todayStr();
+  const items = [];
+  d.tarefas.itens.forEach((t) => {
+    const overdue = t.due_date && t.due_date < today;
+    items.push({ kind: 'task', pr: overdue ? 0 : (t.priority === 'alta' ? 1 : 2), data: t });
+  });
+  d.financas.contasAbertas.forEach((b) => {
+    const overdue = b.due_date && b.due_date < today;
+    items.push({ kind: 'bill', pr: overdue ? 0 : 1, data: b });
+  });
+  (eventos || []).forEach((e) => items.push({ kind: 'event', pr: 1, data: e }));
+  return items.sort((a, b) => a.pr - b.pr);
+}
+
+function agoraRow(it, refresh) {
+  const t = it.data;
+  if (it.kind === 'task') {
+    const overdue = t.due_date && t.due_date < todayStr();
+    const row = el('div', 'aitem' + (t.done ? ' done' : ''));
+    const tick = el('button', 'a-tick', CHECK_SVG);
+    tick.setAttribute('aria-label', 'Concluir');
+    tick.addEventListener('click', async () => { await api(`tasks/${t.id}/toggle`, { method: 'POST' }); refresh(); });
+    const body = el('div', 'a-body');
+    body.innerHTML = `<div class="a-title">${esc(t.title)}</div><div class="a-meta">` +
+      (overdue ? '<span class="a-tag late">atrasada</span>' : (t.due_date ? '<span class="a-tag today">hoje</span>' : '<span>sem prazo</span>')) +
+      (t.priority === 'alta' ? '<span class="a-tag late">alta</span>' : '') + '</div>';
+    body.querySelector('.a-title').addEventListener('click', () => taskForm(t));
+    row.append(tick, body);
+    return row;
+  }
+  if (it.kind === 'bill') {
+    const overdue = t.due_date && t.due_date < todayStr();
+    const row = el('div', 'aitem');
+    const mark = el('div', 'a-tick'); mark.style.borderStyle = 'dashed'; mark.style.cursor = 'default';
+    const body = el('div', 'a-body');
+    body.innerHTML = `<div class="a-title">${esc(t.description || t.category)}</div>` +
+      `<div class="a-meta"><span class="a-kind">conta</span><span class="a-tag ${overdue ? 'late' : 'due'}">` +
+      (t.due_date ? (overdue ? 'venceu ' : 'vence ') + fmtDate(t.due_date) : 'em aberto') + '</span></div>';
+    const amt = el('div', 'a-amt neg num', '−' + brl(t.amount));
+    const pay = el('button', 'a-pay', 'Pagar');
+    pay.addEventListener('click', async () => { await api(`finance/${t.id}/pay`, { method: 'POST' }); toast('Conta paga'); refresh(); });
+    row.append(mark, body, amt, pay);
+    return row;
+  }
+  // event
+  const row = el('div', 'aitem');
+  const mark = el('div', 'a-tick'); mark.style.background = 'var(--accent-weak)'; mark.style.borderColor = 'transparent'; mark.style.cursor = 'default';
+  const hora = t.diaInteiro ? 'dia' : new Date(t.inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const body = el('div', 'a-body');
+  body.innerHTML = `<div class="a-title">${esc(t.titulo)}</div><div class="a-meta"><span class="a-kind ev">agenda</span>` +
+    `<span class="a-time">${esc(hora)}</span>${t.local ? '<span>· ' + esc(t.local) + '</span>' : ''}</div>`;
+  row.append(mark, body);
+  return row;
+}
+
+function habitChip(h, refresh) {
+  const done = h.count >= h.goal;
+  if (h.goal > 1) {
+    const chip = el('button', 'chip' + (done ? ' done' : ''));
+    chip.innerHTML = `<span class="ct"><span class="pm" data-d="-1">−</span><b>${h.count}</b>/${h.goal}<span class="pm" data-d="1">+</span></span> ${esc(h.name)}`;
+    chip.addEventListener('click', (e) => { const pm = e.target.closest('.pm'); if (pm) step(h, Number(pm.dataset.d), refresh); });
+    return chip;
+  }
+  const chip = el('button', 'chip' + (done ? ' done' : ''), `<span class="mk">${CHECK_SVG}</span> ${esc(h.name)}`);
+  chip.addEventListener('click', () => step(h, done ? -1 : 1, refresh));
+  return chip;
+}
+
+/* ---------- captura rápida ---------- */
+function captureBar() {
+  const wrap = el('div', 'capture');
+  const form = el('form', 'cap-form');
+  form.setAttribute('autocomplete', 'off');
+  form.innerHTML =
+    `<input class="cap-input" id="cap-input" placeholder="Registrar agora…  ex: -34 uber" aria-label="Captura rápida" />` +
+    `<button class="cap-send" type="submit" aria-label="Registrar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>`;
+  const hint = el('div', 'cap-hint', defaultHint());
+  const input = form.querySelector('#cap-input');
+  input.addEventListener('input', () => { hint.innerHTML = previewHint(input.value.trim()); });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const txt = input.value.trim();
+    if (!txt) return;
+    try { await captureSubmit(txt); input.value = ''; render(); }
+    catch (err) { toast(err.message); }
+  });
+  wrap.append(form, hint);
+  return wrap;
+}
+function defaultHint() { return '<b>-1500 aluguel</b> vira saída · <b>amanhã ligar contador</b> vira tarefa'; }
+function previewHint(v) {
+  if (!v) return defaultHint();
+  const p = parseCapture(v);
+  if (p.type === 'money') return '→ ' + (p.txType === 'entrada' ? 'entrada' : 'gasto') + ' de <b>' + brl(p.amount) + '</b>' + (p.desc ? ' · ' + esc(p.desc) : '');
+  return '→ tarefa: <b>' + esc(p.title.slice(0, 40)) + '</b>' + (p.due ? ' (' + (p.due === todayStr() ? 'hoje' : 'amanhã') + ')' : '');
+}
+async function captureSubmit(txt) {
+  const p = parseCapture(txt);
+  if (p.type === 'money') {
+    await api('finance', { method: 'POST', body: { type: p.txType, amount: p.amount, category: p.category || 'Outros', description: p.desc, date: todayStr(), paid: 1, ambito } });
+    toast((p.txType === 'entrada' ? 'Entrada' : 'Gasto') + ' de ' + brl(p.amount) + ' lançado');
+  } else {
+    await api('tasks', { method: 'POST', body: { title: p.title, due_date: p.due, priority: 'media', ambito } });
+    toast('Tarefa criada');
+  }
+}
+function parseAmount(s) {
+  s = String(s).replace(/[^\d.,]/g, '');
+  if (!s) return NaN;
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  else if ((s.match(/\./g) || []).length > 1) s = s.replace(/\./g, '');
+  return parseFloat(s);
+}
+function addDays(s, n) { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
+function parseCapture(txt) {
+  const m = txt.match(/([+-]?)\s*r?\$?\s*([\d.,]+)/i);
+  const moneyWord = /(gast|paguei|comprei|recebi|receb|sal[aá]rio|entrou|ganhei|mercado|uber|ifood|aluguel|conta|r\$)/i.test(txt);
+  if (m && (/[+-]/.test(m[1]) || moneyWord)) {
+    const amount = parseAmount(m[2]);
+    if (amount > 0) {
+      const pos = /^\+/.test(m[1]) || /(recebi|receb|sal[aá]rio|entrou|ganhei)/i.test(txt);
+      let desc = txt.replace(m[0], '').replace(/^[+-]/, '').trim();
+      desc = desc ? desc.charAt(0).toUpperCase() + desc.slice(1) : '';
+      return { type: 'money', txType: pos ? 'entrada' : 'saida', amount, desc: desc || null, category: desc ? desc.split(/\s+/)[0] : 'Outros' };
+    }
+  }
+  let due = null, title = txt;
+  // \b não casa com "ã" (acento) — usa substring direta para amanhã.
+  if (/amanh[ãa]/i.test(txt)) { due = addDays(todayStr(), 1); title = title.replace(/amanh[ãa]/ig, ''); }
+  else if (/\bhoje\b/i.test(txt)) { due = todayStr(); title = title.replace(/\bhoje\b/ig, ''); }
+  title = title.replace(/\s+/g, ' ').trim();
+  title = title.charAt(0).toUpperCase() + title.slice(1);
+  return { type: 'task', title, due };
 }
 
 /* ============ AUTOCUIDADO ============ */
@@ -494,7 +635,7 @@ function habitForm(existing) {
 /* ============ TAREFAS ============ */
 let taskScope = 'open';
 async function renderTarefas(v) {
-  const tasks = await api('tasks?scope=' + taskScope);
+  const tasks = await api('tasks?scope=' + taskScope + '&ambito=' + ambito);
   v.innerHTML = '';
   const head = el('div', 'section-h');
   head.innerHTML = '<h2>Responsabilidades</h2>';
@@ -566,6 +707,7 @@ function taskForm(existing) {
       due_date: form.due_date.value || null,
       priority: form.priority.value,
       notes: form.notes.value || null,
+      ambito,
     };
     if (existing) await api('tasks/' + existing.id, { method: 'PATCH', body });
     else await api('tasks', { method: 'POST', body });
@@ -577,7 +719,7 @@ function taskForm(existing) {
 /* ============ FINANÇAS ============ */
 let finMonth = new Date().toISOString().slice(0, 7);
 async function renderFinancas(v) {
-  const d = await api('finance?month=' + finMonth);
+  const d = await api('finance?month=' + finMonth + '&ambito=' + ambito);
   v.innerHTML = '';
   const head = el('div', 'section-h');
   head.innerHTML = '<h2>Finanças</h2>';
@@ -694,6 +836,7 @@ function txForm(existing) {
       date: form.date.value || todayStr(),
       paid: form.pending.checked ? 0 : 1,
       due_date: form.pending.checked ? form.due_date.value || null : null,
+      ambito,
     };
     if (existing) await api('finance/' + existing.id, { method: 'PATCH', body });
     else await api('finance', { method: 'POST', body });

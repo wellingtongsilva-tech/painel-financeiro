@@ -101,13 +101,15 @@ router.get('/habits', (req, res) => {
 
 // ---------- LANÇAR ----------
 
+const ambStore = (a) => (a === 'empresa' ? 'empresa' : 'pessoal');
+
 router.post('/tasks', (req, res) => {
-  const { title, due_date, priority, notes } = req.body || {};
+  const { title, due_date, priority, notes, ambito } = req.body || {};
   if (!title || !String(title).trim()) return res.status(400).json({ error: 'title é obrigatório' });
   const pri = ['baixa', 'media', 'alta'].includes(priority) ? priority : 'media';
   const info = db.prepare(
-    'INSERT INTO tasks (user_id, title, notes, due_date, priority) VALUES (?, ?, ?, ?, ?)'
-  ).run(OWNER_ID, String(title).trim(), notes || null, due_date || null, pri);
+    'INSERT INTO tasks (user_id, title, notes, due_date, priority, ambito) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(OWNER_ID, String(title).trim(), notes || null, due_date || null, pri, ambStore(ambito));
   res.status(201).json(db.prepare('SELECT * FROM tasks WHERE id = ?').get(info.lastInsertRowid));
 });
 
@@ -118,11 +120,11 @@ router.post('/finance', (req, res) => {
   if (!(amount > 0)) return res.status(400).json({ error: 'amount deve ser > 0' });
   const paid = b.paid === 0 || b.paid === false || b.paid === '0' ? 0 : 1;
   const info = db.prepare(
-    `INSERT INTO transactions (user_id, type, amount, category, description, date, paid, due_date)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO transactions (user_id, type, amount, category, description, date, paid, due_date, ambito)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     OWNER_ID, type, amount, b.category || 'Outros', b.description || null,
-    b.date || localToday(), paid, paid === 0 ? (b.due_date || null) : null
+    b.date || localToday(), paid, paid === 0 ? (b.due_date || null) : null, ambStore(b.ambito)
   );
   res.status(201).json(db.prepare('SELECT * FROM transactions WHERE id = ?').get(info.lastInsertRowid));
 });

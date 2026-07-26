@@ -100,6 +100,11 @@ function ensureColumn(table, col, ddl) {
   if (!cols.some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
 }
 ensureColumn('habits', 'remind_times', 'remind_times TEXT'); // CSV "08:00,12:00"
+// Âmbito: separa vida PESSOAL da EMPRESA (finanças e tarefas). Dados antigos = pessoal.
+ensureColumn('tasks', 'ambito', "ambito TEXT NOT NULL DEFAULT 'pessoal'");
+ensureColumn('transactions', 'ambito', "ambito TEXT NOT NULL DEFAULT 'pessoal'");
+db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_ambito ON tasks(user_id, ambito, done)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_tx_ambito ON transactions(user_id, ambito, date)');
 
 export function getSetting(key, fallback = null) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);

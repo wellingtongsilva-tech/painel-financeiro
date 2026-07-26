@@ -5,33 +5,39 @@ import { requireAuth } from '../auth.js';
 const router = Router();
 router.use(requireAuth);
 
-// Lançamentos de um mês. ?month=YYYY-MM (padrão: mês atual)
+// Âmbito: 'pessoal' | 'empresa'. Query inválida/ausente => sem filtro (tudo).
+const ambFilter = (a) => (a === 'empresa' ? 'empresa' : a === 'pessoal' ? 'pessoal' : null);
+const ambStore = (a) => (a === 'empresa' ? 'empresa' : 'pessoal'); // grava sempre um dos dois
+
+// Lançamentos de um mês. ?month=YYYY-MM (padrão: mês atual) &ambito=pessoal|empresa
 router.get('/', (req, res) => {
   const month = /^\d{4}-\d{2}$/.test(req.query.month || '')
     ? req.query.month
     : new Date().toISOString().slice(0, 7);
+  const amb = ambFilter(req.query.ambito);
   const rows = db
     .prepare(
       `SELECT * FROM transactions WHERE user_id = ? AND substr(date, 1, 7) = ?
-       ORDER BY date DESC, id DESC`
+       ${amb ? 'AND ambito = ?' : ''} ORDER BY date DESC, id DESC`
     )
-    .all(req.user.id, month);
-  res.json({ month, transactions: rows, summary: summarize(rows) });
+    .all(...(amb ? [req.user.id, month, amb] : [req.user.id, month]));
+  res.json({ month, ambito: amb, transactions: rows, summary: summarize(rows) });
 });
 
 // Contas a pagar em aberto (paid = 0), ordenadas por vencimento
 router.get('/pending', (req, res) => {
+  const amb = ambFilter(req.query.ambito);
   const rows = db
     .prepare(
       `SELECT * FROM transactions WHERE user_id = ? AND type = 'saida' AND paid = 0
-       ORDER BY due_date IS NULL, due_date, id`
+       ${amb ? 'AND ambito = ?' : ''} ORDER BY due_date IS NULL, due_date, id`
     )
-    .all(req.user.id);
+    .all(...(amb ? [req.user.id, amb] : [req.user.id]));
   res.json(rows);
 });
 
 router.post('/', (req, res) => {
-  const { type, amount, category, description, date, paid, due_date } = req.body || {};
+  const { type, amount, category, description, date, paid, due_date, ambito } = req.body || {};
   if (!['entrada', 'saida'].includes(type)) {
     return res.status(400).json({ error: 'Tipo deve ser "entrada" ou "saida"' });
   }
@@ -40,8 +46,8 @@ router.post('/', (req, res) => {
 
   const info = db
     .prepare(
-      `INSERT INTO transactions (user_id, type, amount, category, description, date, paid, due_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO transactions (user_id, type, amount, category, description, date, paid, due_date, ambito)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       req.user.id,
@@ -51,7 +57,8 @@ router.post('/', (req, res) => {
       description || null,
       date || new Date().toISOString().slice(0, 10),
       paid === 0 || paid === false ? 0 : 1,
-      due_date || null
+      due_date || null,
+      ambStore(ambito)
     );
   res.json(db.prepare('SELECT * FROM transactions WHERE id = ?').get(info.lastInsertRowid));
 });
@@ -59,9 +66,9 @@ router.post('/', (req, res) => {
 router.patch('/:id', (req, res) => {
   const tx = getOwned(req);
   if (!tx) return res.status(404).json({ error: 'Lançamento não encontrado' });
-  const { type, amount, category, description, date, paid, due_date } = req.body || {};
+  const { type, amount, category, description, date, paid, due_date, ambito } = req.body || {};
   db.prepare(
-    `UPDATE transactions SET type = ?, amount = ?, category = ?, description = ?, date = ?, paid = ?, due_date = ?
+    `UPDATE transactions SET type = ?, amount = ?, category = ?, description = ?, date = ?, paid = ?, due_date = ?, ambito = ?
      WHERE id = ?`
   ).run(
     type ?? tx.type,
@@ -71,6 +78,7 @@ router.patch('/:id', (req, res) => {
     date ?? tx.date,
     paid != null ? (paid ? 1 : 0) : tx.paid,
     due_date ?? tx.due_date,
+    ambito ? ambStore(ambito) : tx.ambito,
     tx.id
   );
   res.json(db.prepare('SELECT * FROM transactions WHERE id = ?').get(tx.id));
