@@ -284,15 +284,17 @@ input[type="checkbox"],input[type="radio"]{width:18px; height:18px; accent-color
 .ai-box{white-space:pre-wrap; background:var(--surface-2); border:1px solid var(--line); border-radius:var(--radius-2);
   padding:12px 13px; font-size:.86rem; line-height:1.55; color:var(--ink)}
 
-/* relatório: Pessoal × Empresa lado a lado */
-.report{display:grid; grid-template-columns:repeat(3,1fr); border:1px solid var(--line); border-radius:var(--radius-2); overflow:hidden}
-.rep-col{padding:10px 11px; border-right:1px solid var(--line)}
-.rep-col:last-child{border-right:0; background:var(--surface-2)}
-.rep-h{font-size:.58rem; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); font-weight:700; margin-bottom:6px}
-.rep-row{display:flex; justify-content:space-between; align-items:baseline; gap:5px; font-size:.68rem; color:var(--muted); margin-top:5px}
-.rep-row b{font-size:.78rem; color:var(--ink); font-weight:700}
+/* relatório: Pessoal / Empresa / Total empilhados (cada bloco na largura toda —
+   cabe no celular e mantém valores exatos, sem apertar 3 colunas de moeda) */
+.report{display:flex; flex-direction:column; border:1px solid var(--line); border-radius:var(--radius-2); overflow:hidden}
+.rep-col{padding:9px 12px; border-bottom:1px solid var(--line)}
+.rep-col:last-child{border-bottom:0}
+.rep-h{font-size:.58rem; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); font-weight:700; margin-bottom:4px}
+.rep-row{display:flex; justify-content:space-between; align-items:baseline; gap:10px; font-size:.72rem; color:var(--muted); margin-top:3px}
+.rep-row span{flex:0 0 auto}
+.rep-row b{font-size:.82rem; color:var(--ink); font-weight:700; font-family:var(--mono); font-variant-numeric:tabular-nums; text-align:right}
 .rep-row b.pos{color:var(--pos)} .rep-row b.neg{color:var(--neg)}
-.rep-row.tot{margin-top:7px; padding-top:6px; border-top:1px solid var(--line)}
+.rep-row.tot{margin-top:5px; padding-top:5px; border-top:1px solid var(--line)}
 .rep-row.tot span{color:var(--ink-2); font-weight:600}
 
 /* toggle segmentado */
@@ -367,3 +369,27 @@ small.muted{font-size:.72rem}
 .evt.allday .evt-time{color:var(--muted); font-size:.62rem}
 
 @media (prefers-reduced-motion:reduce){*{animation:none !important; transition:none !important}}
+
+/* =====================================================================
+   Robustez mobile: nada pode estourar a largura da tela (senão a tabbar
+   fixa se desloca e some, e aparece scroll horizontal).
+   ===================================================================== */
+html, body { overflow-x: hidden; max-width: 100%; }
+/* quebra textos longos/sem espaço (descrições de PIX, títulos colados) */
+.a-title, .t-title, .h-name, .tx-desc, .tx-cat, .i-title, .evt-title,
+.a-meta, .t-meta, .h-meta, .cat-top { overflow-wrap: anywhere; word-break: break-word; }
+/* deixa os filhos flex encolherem em vez de empurrar a largura */
+.a-body, .t-body, .tx-body, .i-body, .saldo, .io, .stat, .money-top > * { min-width: 0; }
+.money-top { flex-wrap: wrap; }
+.io { flex-wrap: wrap; }
+/* números encolhem em telas estreitas (evita valores altos estourando) */
+.stat { padding-left: 9px; padding-right: 9px; }
+.stat .v { font-size: clamp(.72rem, 3.2vw, 1.05rem); }
+.saldo .v { font-size: clamp(1.25rem, 5.6vw, 1.7rem); }
+.io .v { font-size: clamp(.74rem, 2.9vw, .9rem); }
+/* CRÍTICO: colunas de grade precisam poder encolher abaixo do conteúdo
+   (1fr tem min-width:auto e estoura); minmax(0,1fr) libera o encolhimento */
+.stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.row2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cat-top span, .cat-top { overflow-wrap: anywhere; min-width: 0; }
+.codebox, .ai-box { overflow-wrap: anywhere; }

@@ -1,5 +1,5 @@
 /* Service worker — cache do app shell (offline-first) + notificações push */
-const VERSION = 'painel-v13';
+const VERSION = 'painel-v14';
 const BASE = self.registration.scope; // termina com / (ex.: https://site/pfin/)
 const SHELL = [
   '',
