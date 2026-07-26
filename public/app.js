@@ -870,6 +870,12 @@ async function renderFinancas(v) {
     } catch { /* opcional */ }
   }
 
+  // análise de gastos (base local + IA opcional)
+  try {
+    const a = await api('finance/analysis?month=' + finMonth + '&ambito=' + ambito);
+    if (a.resumo.saidas > 0) v.appendChild(analiseCard(a));
+  } catch { /* opcional */ }
+
   // a receber (recebíveis em aberto)
   try {
     const rec = await api('finance/receivable?ambito=' + ambito);
@@ -1001,6 +1007,49 @@ async function injectClientSelect(form, selectedId) {
   label.appendChild(sel);
   const firstBtn = form.querySelector('button[type="submit"]');
   form.insertBefore(label, firstBtn);
+}
+
+function analiseCard(a) {
+  const r = a.resumo;
+  const card = el('div', 'card');
+  card.appendChild(el('div', 'card-title', 'Análise de gastos'));
+  if (r.variacaoPct != null) {
+    const up = r.variacaoPct > 0;
+    const line = el('p', 'muted');
+    line.innerHTML = `Gasto ${up ? 'subiu' : 'caiu'} <b style="color:${up ? 'var(--neg)' : 'var(--pos)'}">${Math.abs(r.variacaoPct)}%</b> vs. mês anterior (${brl(r.saidasMesAnterior)} → ${brl(r.saidas)}).`;
+    card.appendChild(line);
+  } else {
+    card.appendChild(el('p', 'muted', `Saídas do mês: ${brl(r.saidas)}.`));
+  }
+  if (r.topGastos.length) card.appendChild(el('p', 'muted', `Maior gasto: ${esc(r.topGastos[0].desc)} — ${brl(r.topGastos[0].valor)}.`));
+
+  const aiBox = el('div');
+  aiBox.style.marginTop = '10px';
+  if (!a.aiConfigured) {
+    aiBox.innerHTML = '<p class="hint">Sugestões por IA (Gemini) desativadas — configure a chave <code>GEMINI_API_KEY</code> no servidor para ativar.</p>';
+  } else {
+    const btn = el('button', 'btn-primary', 'Analisar com IA');
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      const old = btn.textContent;
+      btn.textContent = 'Analisando…';
+      try {
+        const res = await api('finance/analysis/ai?month=' + finMonth + '&ambito=' + ambito, { method: 'POST' });
+        aiBox.innerHTML = '';
+        const box = el('div', 'ai-box');
+        box.textContent = res.ai;
+        aiBox.appendChild(box);
+        if (res.model) aiBox.appendChild(el('p', 'hint', 'via ' + res.model));
+      } catch (err) {
+        btn.disabled = false;
+        btn.textContent = old;
+        toast(err.message);
+      }
+    });
+    aiBox.appendChild(btn);
+  }
+  card.appendChild(aiBox);
+  return card;
 }
 
 function reportCompare(rep) {

@@ -280,6 +280,10 @@ input[type="checkbox"],input[type="radio"]{width:18px; height:18px; accent-color
 .month-nav .m-label{font-weight:750; min-width:150px; text-align:center; text-transform:capitalize; font-size:.85rem;
   letter-spacing:-.01em}
 
+/* análise por IA */
+.ai-box{white-space:pre-wrap; background:var(--surface-2); border:1px solid var(--line); border-radius:var(--radius-2);
+  padding:12px 13px; font-size:.86rem; line-height:1.55; color:var(--ink)}
+
 /* relatório: Pessoal × Empresa lado a lado */
 .report{display:grid; grid-template-columns:repeat(3,1fr); border:1px solid var(--line); border-radius:var(--radius-2); overflow:hidden}
 .rep-col{padding:10px 11px; border-right:1px solid var(--line)}
