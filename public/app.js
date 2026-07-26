@@ -830,6 +830,20 @@ async function renderFinancas(v) {
     }
   } catch { /* opcional */ }
 
+  // metas / orçamento do mês
+  try {
+    const budgets = await api('budgets?month=' + finMonth + '&ambito=' + ambito);
+    const bc = el('div', 'card');
+    const bh = el('div', 'card-title', 'Metas do mês');
+    const addB = el('button', 'add-btn', '+ Meta');
+    addB.style.cssText = 'padding:4px 9px;font-size:.72rem';
+    addB.addEventListener('click', () => budgetForm(null, () => renderFinancas(v)));
+    bh.appendChild(addB); bc.appendChild(bh);
+    if (!budgets.length) bc.appendChild(el('p', 'empty', 'Sem metas. Defina um teto de gasto por categoria.'));
+    budgets.forEach((b) => bc.appendChild(budgetRow(b, () => renderFinancas(v))));
+    v.appendChild(bc);
+  } catch { /* opcional */ }
+
   // gastos por categoria
   if (s.porCategoria.length) {
     const cat = el('div', 'card');
@@ -850,6 +864,109 @@ async function renderFinancas(v) {
   if (!d.transactions.length) list.appendChild(el('p', 'empty', 'Nenhum lançamento neste mês.'));
   d.transactions.forEach((t) => list.appendChild(txRow(t, () => renderFinancas(v))));
   v.appendChild(list);
+
+  // contas recorrentes (fixas)
+  try {
+    const recs = await api('recurring?ambito=' + ambito);
+    const rc = el('div', 'card');
+    const rh = el('div', 'card-title', 'Contas recorrentes');
+    const addR = el('button', 'add-btn', '+ Recorrente');
+    addR.style.cssText = 'padding:4px 9px;font-size:.72rem';
+    addR.addEventListener('click', () => recurringForm(null, () => renderFinancas(v)));
+    rh.appendChild(addR); rc.appendChild(rh);
+    if (!recs.length) rc.appendChild(el('p', 'empty', 'Nenhuma conta fixa. Ex.: aluguel, salários, assinaturas — aparecem sozinhas todo mês.'));
+    recs.forEach((r) => rc.appendChild(recurringItem(r, () => renderFinancas(v))));
+    v.appendChild(rc);
+  } catch { /* opcional */ }
+}
+
+function budgetRow(b, refresh) {
+  const ratio = b.limit_amount ? b.spent / b.limit_amount : 0;
+  const pct = Math.min(Math.round(ratio * 100), 100);
+  const state = ratio >= 1 ? 'over' : ratio >= 0.8 ? 'warn' : 'ok';
+  const row = el('div', 'cat-bar');
+  row.style.cursor = 'pointer';
+  row.innerHTML = `<div class="cat-top"><span>${esc(b.category)}</span><span class="num">${brl(b.spent)} / ${brl(b.limit_amount)}</span></div>
+    <div class="cat-line"><i class="bud-${state}" style="width:${pct}%"></i></div>`;
+  row.addEventListener('click', () => budgetForm(b, refresh));
+  return row;
+}
+
+function budgetForm(existing, refresh) {
+  const form = el('form', 'modal-form');
+  form.innerHTML = `
+    <label>Categoria<input name="category" list="cats-b" value="${esc(existing?.category || '')}" ${existing ? 'readonly' : ''} placeholder="Ex.: Mercado" />
+      <datalist id="cats-b"><option>Moradia</option><option>Mercado</option><option>Transporte</option><option>Saúde</option><option>Lazer</option><option>Contas</option><option>Software</option><option>Outros</option></datalist></label>
+    <label>Teto no mês (R$)<input name="limit" type="number" step="0.01" min="0.01" required value="${existing?.limit_amount ?? ''}" /></label>
+    <button class="btn-primary" type="submit">Salvar meta</button>
+    ${existing ? '<button type="button" class="add-btn" id="del-b" style="color:var(--neg)">Excluir meta</button>' : ''}
+    <p class="error" id="b-msg"></p>`;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+      await api('budgets', { method: 'POST', body: { category: form.category.value, ambito: ambitoWrite(), limit_amount: Number(form.limit.value) } });
+      closeModal(); toast('Meta salva'); refresh();
+    } catch (err) { form.querySelector('#b-msg').textContent = err.message; }
+  });
+  if (existing) form.querySelector('#del-b').addEventListener('click', async () => {
+    await api('budgets/' + existing.id, { method: 'DELETE' }); closeModal(); toast('Meta excluída'); refresh();
+  });
+  openModal(existing ? 'Editar meta' : 'Nova meta', form);
+}
+
+function recurringItem(r, refresh) {
+  const isIn = r.type === 'entrada';
+  const row = el('div', 'tx');
+  row.style.cursor = 'pointer';
+  row.innerHTML = `<div class="tx-ic ${isIn ? 'in' : 'out'}">${isIn ? '↑' : '↓'}</div>
+    <div class="tx-body"><div class="tx-desc">${esc(r.description || r.category)}${r.active ? '' : ' <span class="status-chip off">pausada</span>'}</div>
+      <div class="tx-cat">${esc(r.category)} · todo dia ${r.day_of_month}${ambito === 'tudo' ? ' · ' + (r.ambito === 'empresa' ? 'EMP' : 'PES') : ''}</div></div>
+    <div class="tx-amt ${isIn ? 'in' : 'out'}">${isIn ? '+' : '−'}${brl(r.amount)}</div>`;
+  row.querySelector('.tx-body').addEventListener('click', () => recurringForm(r, refresh));
+  return row;
+}
+
+function recurringForm(existing, refresh) {
+  const type = existing?.type || 'saida';
+  const form = el('form', 'modal-form');
+  form.innerHTML = `
+    <div class="seg ${type === 'entrada' ? 'in' : 'out'}" id="rec-type">
+      <button type="button" data-t="entrada" class="${type === 'entrada' ? 'on' : ''}">Entrada</button>
+      <button type="button" data-t="saida" class="${type === 'saida' ? 'on' : ''}">Saída</button>
+    </div>
+    <div class="row2">
+      <label>Valor (R$)<input name="amount" type="number" step="0.01" min="0.01" required value="${existing?.amount ?? ''}" /></label>
+      <label>Todo dia<input name="dom" type="number" min="1" max="28" value="${existing?.day_of_month || 1}" /></label>
+    </div>
+    <label>Categoria<input name="category" list="cats-r" value="${esc(existing?.category || '')}" placeholder="Ex.: Aluguel" />
+      <datalist id="cats-r"><option>Moradia</option><option>Contas</option><option>Software</option><option>Salário</option><option>Impostos</option><option>Outros</option></datalist></label>
+    <label>Descrição<input name="description" value="${esc(existing?.description || '')}" placeholder="Ex.: Aluguel do escritório" /></label>
+    ${existing ? `<label class="chk"><input type="checkbox" name="active" ${existing.active ? 'checked' : ''} /> Ativa (gera lançamento todo mês)</label>` : ''}
+    <button class="btn-primary" type="submit">${existing ? 'Salvar' : 'Adicionar'}</button>
+    ${existing ? '<button type="button" class="add-btn" id="del-r" style="color:var(--neg)">Excluir</button>' : ''}
+    <p class="error" id="r-msg"></p>`;
+  let curType = type;
+  form.querySelector('#rec-type').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-t]'); if (!b) return;
+    curType = b.dataset.t;
+    $$('#rec-type button').forEach((x) => x.classList.toggle('on', x === b));
+    form.querySelector('#rec-type').className = 'seg ' + (curType === 'entrada' ? 'in' : 'out');
+  });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = { type: curType, amount: Number(form.amount.value), category: form.category.value || 'Outros', description: form.description.value || null, day_of_month: Number(form.dom.value), ambito: ambitoWrite() };
+    if (existing) body.active = form.active.checked;
+    try {
+      if (existing) await api('recurring/' + existing.id, { method: 'PATCH', body });
+      else await api('recurring', { method: 'POST', body });
+      closeModal(); toast('Recorrente salva'); refresh();
+    } catch (err) { form.querySelector('#r-msg').textContent = err.message; }
+  });
+  if (existing) form.querySelector('#del-r').addEventListener('click', async () => {
+    if (!confirm('Excluir esta conta recorrente? Os lançamentos já gerados continuam.')) return;
+    await api('recurring/' + existing.id, { method: 'DELETE' }); closeModal(); toast('Excluída'); refresh();
+  });
+  openModal(existing ? 'Editar recorrente' : 'Nova conta recorrente', form);
 }
 
 function txRow(t, refresh) {

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { requireAuth } from '../auth.js';
+import { ensureRecurring } from '../recurring.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -13,6 +14,7 @@ router.get('/', (req, res) => {
   const month = day.slice(0, 7);
   const amb = ambFilter(req.query.ambito);
   const aClause = amb ? ' AND ambito = ?' : '';
+  ensureRecurring(uid, month); // gera as contas fixas do mês corrente (idempotente)
 
   // --- Autocuidado do dia ---
   const habits = db

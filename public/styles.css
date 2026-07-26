@@ -270,6 +270,9 @@ input[type="checkbox"],input[type="radio"]{width:18px; height:18px; accent-color
   font-family:var(--mono); font-variant-numeric:tabular-nums}
 .cat-bar .cat-line{height:4px; background:var(--surface-2); overflow:hidden; border-radius:3px}
 .cat-bar .cat-line>i{display:block; height:100%; background:var(--accent)}
+.cat-bar .cat-line>i.bud-ok{background:var(--accent)}
+.cat-bar .cat-line>i.bud-warn{background:var(--warn)}
+.cat-bar .cat-line>i.bud-over{background:var(--neg)}
 .month-nav{display:flex; align-items:center; justify-content:center; gap:14px; margin:4px 0 14px}
 .month-nav button{border:1px solid var(--line-2); background:var(--surface); color:var(--ink); width:40px; height:40px;
   border-radius:var(--radius-3)}

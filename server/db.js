@@ -103,8 +103,33 @@ ensureColumn('habits', 'remind_times', 'remind_times TEXT'); // CSV "08:00,12:00
 // Âmbito: separa vida PESSOAL da EMPRESA (finanças e tarefas). Dados antigos = pessoal.
 ensureColumn('tasks', 'ambito', "ambito TEXT NOT NULL DEFAULT 'pessoal'");
 ensureColumn('transactions', 'ambito', "ambito TEXT NOT NULL DEFAULT 'pessoal'");
+ensureColumn('transactions', 'recurring_id', 'recurring_id INTEGER'); // origem: conta recorrente
 db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_ambito ON tasks(user_id, ambito, done)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_tx_ambito ON transactions(user_id, ambito, date)');
+
+// Contas RECORRENTES (fixas): modelo que gera um lançamento em aberto por mês.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS recurring (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    type         TEXT NOT NULL,               -- entrada | saida
+    amount       REAL NOT NULL,
+    category     TEXT NOT NULL DEFAULT 'Outros',
+    description  TEXT,
+    ambito       TEXT NOT NULL DEFAULT 'pessoal',
+    day_of_month INTEGER NOT NULL DEFAULT 1,  -- 1..28
+    active       INTEGER NOT NULL DEFAULT 1,
+    created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS budgets (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category     TEXT NOT NULL,
+    ambito       TEXT NOT NULL DEFAULT 'pessoal',
+    limit_amount REAL NOT NULL,
+    UNIQUE(user_id, ambito, category)
+  );
+`);
 
 export function getSetting(key, fallback = null) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../db.js';
 import { requireAuth } from '../auth.js';
+import { ensureRecurring } from '../recurring.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -14,6 +15,7 @@ router.get('/', (req, res) => {
   const month = /^\d{4}-\d{2}$/.test(req.query.month || '')
     ? req.query.month
     : new Date().toISOString().slice(0, 7);
+  if (month === new Date().toISOString().slice(0, 7)) ensureRecurring(req.user.id, month);
   const amb = ambFilter(req.query.ambito);
   const rows = db
     .prepare(
