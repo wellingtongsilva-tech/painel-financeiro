@@ -44,6 +44,20 @@ jobs:
              grep -q "^OPS_NOTIFY_SECRET=" /opt/pfin/.env || echo "OPS_NOTIFY_SECRET=$(openssl rand -hex 32)" >> /opt/pfin/.env;
              echo "[pfin] .env: OPS_NOTIFY_* garantidos"'
 
+      - name: Sincronizar GEMINI_API_KEY no .env
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          # valor vai por STDIN (não entra em argv nem em log); atualiza ou insere a linha
+          printf '%s' "$GEMINI_API_KEY" | ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            'KEY=$(cat); f=/opt/pfin/.env; touch "$f";
+             if [ -n "$KEY" ]; then
+               grep -v "^GEMINI_API_KEY=" "$f" > "$f.tmp" || true; mv "$f.tmp" "$f";
+               printf "GEMINI_API_KEY=%s\n" "$KEY" >> "$f";
+               echo "[pfin] GEMINI_API_KEY sincronizada no .env";
+             else echo "[pfin] secret GEMINI_API_KEY vazio — pulei"; fi'
+
       - name: Subir container (docker compose)
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=accept-new \
