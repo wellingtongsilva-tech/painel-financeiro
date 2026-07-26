@@ -54,6 +54,14 @@ router.get('/', (req, res) => {
     .all(...(amb ? [uid, amb] : [uid]));
   const pendingTotal = pending.reduce((s, t) => s + t.amount, 0);
 
+  const recebiveis = db
+    .prepare(
+      `SELECT * FROM transactions WHERE user_id = ? AND type = 'entrada' AND paid = 0${aClause}
+       ORDER BY due_date IS NULL, due_date LIMIT 10`
+    )
+    .all(...(amb ? [uid, amb] : [uid]));
+  const recebiveisTotal = recebiveis.reduce((s, t) => s + t.amount, 0);
+
   res.json({
     day,
     month,
@@ -67,6 +75,8 @@ router.get('/', (req, res) => {
       saldo: round(entradas - saidas),
       contasAbertas: pending,
       contasAbertasTotal: round(pendingTotal),
+      recebiveis,
+      recebiveisTotal: round(recebiveisTotal),
     },
   });
 });

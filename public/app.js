@@ -327,10 +327,13 @@ async function settingsForm() {
 
 /* ---------- âmbito: PESSOAL × EMPRESA ---------- */
 const AMBITO_KEY = 'painel-ambito';
-let ambito = localStorage.getItem(AMBITO_KEY) === 'empresa' ? 'empresa' : 'pessoal';
+const AMBITOS = ['pessoal', 'empresa', 'tudo'];
+let ambito = AMBITOS.includes(localStorage.getItem(AMBITO_KEY)) ? localStorage.getItem(AMBITO_KEY) : 'pessoal';
+// Âmbito para GRAVAR (captura/forms): em "tudo", cai em pessoal por padrão.
+const ambitoWrite = () => (ambito === 'empresa' ? 'empresa' : 'pessoal');
 function syncAmbitoButtons() { $$('.amb-btn').forEach((b) => b.classList.toggle('on', b.dataset.amb === ambito)); }
 $$('.amb-btn').forEach((b) => b.addEventListener('click', () => {
-  ambito = b.dataset.amb === 'empresa' ? 'empresa' : 'pessoal';
+  ambito = AMBITOS.includes(b.dataset.amb) ? b.dataset.amb : 'pessoal';
   localStorage.setItem(AMBITO_KEY, ambito);
   syncAmbitoButtons();
   render();
@@ -391,7 +394,7 @@ async function renderAgora(v) {
   // lista unificada "Agora"
   const items = buildAgoraItems(d, eventos);
   const listCard = el('div', 'card');
-  listCard.appendChild(el('div', 'card-title', `Agora <span>${ambito === 'empresa' ? 'Empresa' : 'Pessoal'}</span>`));
+  listCard.appendChild(el('div', 'card-title', `Agora <span>${ambito === 'empresa' ? 'Empresa' : ambito === 'tudo' ? 'Tudo' : 'Pessoal'}</span>`));
   const list = el('div', 'alist');
   if (!items.length) list.appendChild(el('p', 'empty', 'Nada urgente agora.'));
   items.forEach((it) => list.appendChild(agoraRow(it, () => renderAgora(v))));
@@ -429,12 +432,18 @@ function buildAgoraItems(d, eventos) {
     const overdue = b.due_date && b.due_date < today;
     items.push({ kind: 'bill', pr: overdue ? 0 : 1, data: b });
   });
+  (d.financas.recebiveis || []).forEach((r) => {
+    const overdue = r.due_date && r.due_date < today;
+    items.push({ kind: 'recv', pr: overdue ? 0 : 1, data: r });
+  });
   (eventos || []).forEach((e) => items.push({ kind: 'event', pr: 1, data: e }));
   return items.sort((a, b) => a.pr - b.pr);
 }
 
 function agoraRow(it, refresh) {
   const t = it.data;
+  // etiqueta Pessoal/Empresa só aparece no modo "Tudo"
+  const pe = (x) => (ambito === 'tudo' && x && x.ambito) ? `<span class="a-kind">${x.ambito === 'empresa' ? 'EMP' : 'PES'}</span>` : '';
   if (it.kind === 'task') {
     const overdue = t.due_date && t.due_date < todayStr();
     const row = el('div', 'aitem' + (t.done ? ' done' : ''));
@@ -442,7 +451,7 @@ function agoraRow(it, refresh) {
     tick.setAttribute('aria-label', 'Concluir');
     tick.addEventListener('click', async () => { await api(`tasks/${t.id}/toggle`, { method: 'POST' }); refresh(); });
     const body = el('div', 'a-body');
-    body.innerHTML = `<div class="a-title">${esc(t.title)}</div><div class="a-meta">` +
+    body.innerHTML = `<div class="a-title">${esc(t.title)}</div><div class="a-meta">` + pe(t) +
       (overdue ? '<span class="a-tag late">atrasada</span>' : (t.due_date ? '<span class="a-tag today">hoje</span>' : '<span>sem prazo</span>')) +
       (t.priority === 'alta' ? '<span class="a-tag late">alta</span>' : '') + '</div>';
     body.querySelector('.a-title').addEventListener('click', () => taskForm(t));
@@ -455,12 +464,26 @@ function agoraRow(it, refresh) {
     const mark = el('div', 'a-tick'); mark.style.borderStyle = 'dashed'; mark.style.cursor = 'default';
     const body = el('div', 'a-body');
     body.innerHTML = `<div class="a-title">${esc(t.description || t.category)}</div>` +
-      `<div class="a-meta"><span class="a-kind">conta</span><span class="a-tag ${overdue ? 'late' : 'due'}">` +
+      `<div class="a-meta">` + pe(t) + `<span class="a-kind">conta</span><span class="a-tag ${overdue ? 'late' : 'due'}">` +
       (t.due_date ? (overdue ? 'venceu ' : 'vence ') + fmtDate(t.due_date) : 'em aberto') + '</span></div>';
     const amt = el('div', 'a-amt neg num', '−' + brl(t.amount));
     const pay = el('button', 'a-pay', 'Pagar');
     pay.addEventListener('click', async () => { await api(`finance/${t.id}/pay`, { method: 'POST' }); toast('Conta paga'); refresh(); });
     row.append(mark, body, amt, pay);
+    return row;
+  }
+  if (it.kind === 'recv') {
+    const overdue = t.due_date && t.due_date < todayStr();
+    const row = el('div', 'aitem');
+    const mark = el('div', 'a-tick'); mark.style.borderStyle = 'dashed'; mark.style.cursor = 'default';
+    const body = el('div', 'a-body');
+    body.innerHTML = `<div class="a-title">${esc(t.description || t.category)}</div>` +
+      `<div class="a-meta">` + pe(t) + `<span class="a-kind">a receber</span><span class="a-tag ${overdue ? 'late' : 'due'}">` +
+      (t.due_date ? (overdue ? 'venceu ' : 'prev. ') + fmtDate(t.due_date) : 'sem data') + '</span></div>';
+    const amt = el('div', 'a-amt pos num', '+' + brl(t.amount));
+    const rec = el('button', 'a-pay', 'Recebi');
+    rec.addEventListener('click', async () => { await api(`finance/${t.id}/pay`, { method: 'POST' }); toast('Recebimento confirmado'); refresh(); });
+    row.append(mark, body, amt, rec);
     return row;
   }
   // event
@@ -518,10 +541,10 @@ function previewHint(v) {
 async function captureSubmit(txt) {
   const p = parseCapture(txt);
   if (p.type === 'money') {
-    await api('finance', { method: 'POST', body: { type: p.txType, amount: p.amount, category: p.category || 'Outros', description: p.desc, date: todayStr(), paid: 1, ambito } });
+    await api('finance', { method: 'POST', body: { type: p.txType, amount: p.amount, category: p.category || 'Outros', description: p.desc, date: todayStr(), paid: 1, ambito: ambitoWrite() } });
     toast((p.txType === 'entrada' ? 'Entrada' : 'Gasto') + ' de ' + brl(p.amount) + ' lançado');
   } else {
-    await api('tasks', { method: 'POST', body: { title: p.title, due_date: p.due, priority: 'media', ambito } });
+    await api('tasks', { method: 'POST', body: { title: p.title, due_date: p.due, priority: 'media', ambito: ambitoWrite() } });
     toast('Tarefa criada');
   }
 }
@@ -707,7 +730,7 @@ function taskForm(existing) {
       due_date: form.due_date.value || null,
       priority: form.priority.value,
       notes: form.notes.value || null,
-      ambito,
+      ambito: ambitoWrite(),
     };
     if (existing) await api('tasks/' + existing.id, { method: 'PATCH', body });
     else await api('tasks', { method: 'POST', body });
@@ -746,6 +769,18 @@ async function renderFinancas(v) {
     <div class="stat"><div class="v">${brl(s.saldo)}</div><div class="l">Saldo</div></div>`;
   v.appendChild(stats);
 
+  // a receber (recebíveis em aberto)
+  try {
+    const rec = await api('finance/receivable?ambito=' + ambito);
+    if (rec.length) {
+      const card = el('div', 'card');
+      const tot = rec.reduce((s, t) => s + t.amount, 0);
+      card.appendChild(el('div', 'card-title', `A receber <span>${brl(tot)}</span>`));
+      rec.forEach((t) => card.appendChild(recvRow(t, () => renderFinancas(v))));
+      v.appendChild(card);
+    }
+  } catch { /* opcional */ }
+
   // gastos por categoria
   if (s.porCategoria.length) {
     const cat = el('div', 'card');
@@ -782,6 +817,18 @@ function txRow(t, refresh) {
   return row;
 }
 
+function recvRow(t, refresh) {
+  const overdue = t.due_date && t.due_date < todayStr();
+  const row = el('div', 'tx');
+  row.innerHTML = `<div class="tx-ic in">↑</div>
+    <div class="tx-body"><div class="tx-desc">${esc(t.description || t.category)}</div>
+      <div class="tx-cat">${t.due_date ? (overdue ? 'venceu ' : 'prev. ') + fmtDate(t.due_date) : 'sem data'}</div></div>`;
+  const rec = el('button', 'add-btn', 'Recebi');
+  rec.addEventListener('click', async () => { await api(`finance/${t.id}/pay`, { method: 'POST' }); toast('Recebimento confirmado'); refresh(); });
+  row.appendChild(rec);
+  return row;
+}
+
 function pendingRow(t, refresh) {
   const overdue = t.due_date && t.due_date < todayStr();
   const row = el('div', 'tx');
@@ -811,8 +858,8 @@ function txForm(existing) {
       <datalist id="cats"><option>Moradia</option><option>Mercado</option><option>Transporte</option><option>Saúde</option><option>Lazer</option><option>Contas</option><option>Salário</option><option>Outros</option></datalist>
     </label>
     <label>Descrição<input name="description" value="${esc(existing?.description || '')}" placeholder="opcional" /></label>
-    <label class="chk"><input type="checkbox" name="pending" ${existing && !existing.paid ? 'checked' : ''} style="width:auto" /> É conta a pagar (em aberto)</label>
-    <label id="due-wrap" class="${existing && !existing.paid ? '' : 'hidden'}">Vencimento<input name="due_date" type="date" value="${existing?.due_date || ''}" /></label>
+    <label class="chk"><input type="checkbox" name="pending" ${existing && !existing.paid ? 'checked' : ''} style="width:auto" /> <span id="pending-label">${type === 'entrada' ? 'É valor a receber (em aberto)' : 'É conta a pagar (em aberto)'}</span></label>
+    <label id="due-wrap" class="${existing && !existing.paid ? '' : 'hidden'}"><span id="due-label">${type === 'entrada' ? 'Previsão de recebimento' : 'Vencimento'}</span><input name="due_date" type="date" value="${existing?.due_date || ''}" /></label>
     <button class="btn-primary" type="submit">${existing ? 'Salvar' : 'Adicionar'}</button>
     ${existing ? '<button type="button" class="add-btn" id="del-tx" style="background:var(--red-soft);color:var(--red)">Excluir</button>' : ''}`;
 
@@ -823,6 +870,8 @@ function txForm(existing) {
     curType = b.dataset.t;
     $$('#tx-type button').forEach((x) => x.classList.toggle('on', x === b));
     form.querySelector('#tx-type').className = 'seg ' + (curType === 'entrada' ? 'in' : 'out');
+    form.querySelector('#pending-label').textContent = curType === 'entrada' ? 'É valor a receber (em aberto)' : 'É conta a pagar (em aberto)';
+    form.querySelector('#due-label').textContent = curType === 'entrada' ? 'Previsão de recebimento' : 'Vencimento';
   });
   form.pending.addEventListener('change', () => form.querySelector('#due-wrap').classList.toggle('hidden', !form.pending.checked));
 
@@ -836,7 +885,7 @@ function txForm(existing) {
       date: form.date.value || todayStr(),
       paid: form.pending.checked ? 0 : 1,
       due_date: form.pending.checked ? form.due_date.value || null : null,
-      ambito,
+      ambito: ambitoWrite(),
     };
     if (existing) await api('finance/' + existing.id, { method: 'PATCH', body });
     else await api('finance', { method: 'POST', body });

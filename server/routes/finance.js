@@ -36,6 +36,18 @@ router.get('/pending', (req, res) => {
   res.json(rows);
 });
 
+// Contas a RECEBER em aberto (entrada + paid = 0), ordenadas por previsão
+router.get('/receivable', (req, res) => {
+  const amb = ambFilter(req.query.ambito);
+  const rows = db
+    .prepare(
+      `SELECT * FROM transactions WHERE user_id = ? AND type = 'entrada' AND paid = 0
+       ${amb ? 'AND ambito = ?' : ''} ORDER BY due_date IS NULL, due_date, id`
+    )
+    .all(...(amb ? [req.user.id, amb] : [req.user.id]));
+  res.json(rows);
+});
+
 router.post('/', (req, res) => {
   const { type, amount, category, description, date, paid, due_date, ambito } = req.body || {};
   if (!['entrada', 'saida'].includes(type)) {
