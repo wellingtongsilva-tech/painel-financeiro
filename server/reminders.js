@@ -161,6 +161,14 @@ function billsOpen() {
     )
     .all(OWNER_ID);
 }
+function receivablesOpen() {
+  return db
+    .prepare(
+      `SELECT * FROM transactions WHERE user_id = ? AND type = 'entrada' AND paid = 0 AND due_date IS NOT NULL`
+    )
+    .all(OWNER_ID);
+}
+const ambTag = (a) => (a === 'empresa' ? '[Empresa] ' : '');
 const brl = (n) => (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 function daysBetween(a, b) {
   // a, b = 'YYYY-MM-DD' -> dias inteiros (b - a)
@@ -177,11 +185,16 @@ function tick() {
     if (isHM(morning) && morning === hm && !alreadySent('morning', date)) {
       const h = habitsPending(date).length;
       const t = tasksDue(date).length;
-      const bills = billsOpen().filter((b) => daysBetween(date, b.due_date) <= 2).length;
+      const bills = billsOpen().filter((b) => daysBetween(date, b.due_date) <= 2);
+      const recv = receivablesOpen().filter((b) => daysBetween(date, b.due_date) <= 2);
       const parts = [];
       if (h) parts.push(`${h} hábito(s) pendente(s)`);
       if (t) parts.push(`${t} tarefa(s) para hoje`);
-      if (bills) parts.push(`${bills} conta(s) a vencer`);
+      if (bills.length) {
+        const emp = bills.filter((b) => b.ambito === 'empresa').length;
+        parts.push(`${bills.length} conta(s) a vencer${emp ? ` (${emp} da empresa)` : ''}`);
+      }
+      if (recv.length) parts.push(`${brl(recv.reduce((s, b) => s + b.amount, 0))} a receber`);
       const body = parts.length ? parts.join(' · ') : 'Tudo em dia por aqui 🎉';
       dispatch({ title: '☀️ Bom dia! Seu dia', body, tag: 'morning' });
       markSent('morning', date);
@@ -213,7 +226,21 @@ function tick() {
         if (alreadySent(key, date)) continue;
         const quando = d < 0 ? 'venceu' : d === 0 ? 'vence hoje' : `vence em ${d} dia(s)`;
         dispatch({
-          title: `💸 Conta ${quando}`,
+          title: `💸 ${ambTag(b.ambito)}Conta ${quando}`,
+          body: `${b.description || b.category} — ${brl(b.amount)}`,
+          tag: key,
+        });
+        markSent(key, date);
+      }
+      // contas a RECEBER previstas (mesma antecedência configurada)
+      for (const b of receivablesOpen()) {
+        const d = daysBetween(date, b.due_date);
+        if (d < 0 || d > billsDays) continue;
+        const key = `recv:${b.id}`;
+        if (alreadySent(key, date)) continue;
+        const quando = d === 0 ? 'previsto hoje' : `previsto em ${d} dia(s)`;
+        dispatch({
+          title: `💰 ${ambTag(b.ambito)}A receber ${quando}`,
           body: `${b.description || b.category} — ${brl(b.amount)}`,
           tag: key,
         });
