@@ -341,7 +341,7 @@ $$('.amb-btn').forEach((b) => b.addEventListener('click', () => {
 syncAmbitoButtons();
 
 /* ---------- navegação ---------- */
-const TITLES = { hoje: 'Agora', autocuidado: 'Rotina', tarefas: 'Tarefas', financas: 'Finanças' };
+const TITLES = { hoje: 'Agora', agenda: 'Agenda', autocuidado: 'Rotina', tarefas: 'Tarefas', financas: 'Finanças' };
 let currentView = 'hoje';
 $$('.tabbar-btn').forEach((b) =>
   b.addEventListener('click', () => switchView(b.dataset.view))
@@ -350,7 +350,8 @@ function switchView(view) {
   currentView = view;
   $$('.tabbar-btn').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
   $('#topbar-title').textContent = TITLES[view];
-  $('#ambito-bar').classList.toggle('hidden', view === 'autocuidado'); // rotina é sempre pessoal
+  // âmbito não se aplica a rotina (pessoal) nem à agenda (calendário)
+  $('#ambito-bar').classList.toggle('hidden', view === 'autocuidado' || view === 'agenda');
   render();
 }
 
@@ -359,6 +360,7 @@ async function render() {
   v.innerHTML = '<p class="empty">Carregando…</p>';
   try {
     if (currentView === 'hoje') await renderAgora(v);
+    else if (currentView === 'agenda') await renderAgendaView(v);
     else if (currentView === 'autocuidado') await renderAutocuidado(v);
     else if (currentView === 'tarefas') await renderTarefas(v);
     else if (currentView === 'financas') await renderFinancas(v);
@@ -575,6 +577,53 @@ function parseCapture(txt) {
   title = title.replace(/\s+/g, ' ').trim();
   title = title.charAt(0).toUpperCase() + title.slice(1);
   return { type: 'task', title, due };
+}
+
+/* ============ AGENDA (Google Agenda, próximos dias) ============ */
+async function renderAgendaView(v) {
+  const g = await api('gcal/upcoming?days=7').catch(() => ({ connected: false, eventos: [] }));
+  v.innerHTML = '';
+  const head = el('div', 'section-h');
+  head.innerHTML = '<h2>Agenda</h2>';
+  v.appendChild(head);
+
+  if (!g.connected) {
+    const card = el('div', 'card');
+    card.appendChild(el('p', 'empty', 'Google Agenda não conectada.'));
+    const b = el('button', 'btn-primary', 'Conectar Google Agenda');
+    b.style.marginTop = '4px';
+    b.addEventListener('click', () => settingsForm());
+    card.appendChild(b);
+    v.appendChild(card);
+    return;
+  }
+  if (!g.eventos.length) {
+    v.appendChild(el('div', 'card', '<p class="empty">Sem eventos nos próximos 7 dias.</p>'));
+    return;
+  }
+
+  const byDay = {};
+  g.eventos.forEach((e) => { (byDay[e.dia] = byDay[e.dia] || []).push(e); });
+  Object.keys(byDay).sort().forEach((dia) => {
+    const card = el('div', 'card');
+    card.appendChild(el('div', 'card-title', dayHeader(dia)));
+    byDay[dia].forEach((e) => {
+      const row = el('div', 'evt' + (e.diaInteiro ? ' allday' : ''));
+      const hora = e.diaInteiro ? 'dia' : new Date(e.inicio).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      row.innerHTML = `<span class="evt-time">${esc(hora)}</span>
+        <div><div class="evt-title">${esc(e.titulo)}</div>${e.local ? `<div class="tx-cat">${esc(e.local)}</div>` : ''}</div>`;
+      card.appendChild(row);
+    });
+    v.appendChild(card);
+  });
+}
+
+function dayHeader(dia) {
+  const today = todayStr();
+  const tmr = addDays(today, 1);
+  const label = new Date(dia + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short' });
+  const prefix = dia === today ? 'Hoje · ' : dia === tmr ? 'Amanhã · ' : '';
+  return prefix + label;
 }
 
 /* ============ AUTOCUIDADO ============ */

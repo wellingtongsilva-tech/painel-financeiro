@@ -107,13 +107,13 @@ input[type="checkbox"],input[type="radio"]{width:18px; height:18px; accent-color
 
 /* ---------- Tab bar ---------- */
 .tabbar{position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:480px;
-  display:grid; grid-template-columns:repeat(4,1fr);
+  display:grid; grid-template-columns:repeat(5,1fr);
   background:color-mix(in srgb,var(--surface) 92%,transparent); backdrop-filter:blur(12px);
-  border-top:1px solid var(--line); padding:7px 8px calc(7px + var(--safe-b)); z-index:30}
+  border-top:1px solid var(--line); padding:7px 6px calc(7px + var(--safe-b)); z-index:30}
 .tabbar-btn{border:0; background:transparent; color:var(--faint); display:flex; flex-direction:column;
-  align-items:center; gap:3px; font-size:.62rem; font-weight:650; letter-spacing:.01em; padding:5px 0;
+  align-items:center; gap:3px; font-size:.6rem; font-weight:650; letter-spacing:.005em; padding:5px 0;
   border-radius:var(--radius-3)}
-.tabbar-btn svg{width:21px; height:21px; stroke-width:1.9}
+.tabbar-btn svg{width:20px; height:20px; stroke-width:1.9}
 .tabbar-btn.active{color:var(--accent)}
 
 /* ---------- Cards & compartilhados ---------- */

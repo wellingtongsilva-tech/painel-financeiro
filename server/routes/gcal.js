@@ -117,6 +117,46 @@ router.get('/today', async (req, res) => {
   }
 });
 
+// Eventos dos próximos N dias (padrão 7), com o campo `dia` (YYYY-MM-DD) p/ agrupar
+router.get('/upcoming', async (req, res) => {
+  if (!isConnected()) return res.json({ connected: false, eventos: [] });
+  try {
+    const token = await accessToken();
+    const days = Math.min(Math.max(parseInt(req.query.days, 10) || 7, 1), 30);
+    const start = localDate();
+    const end = addLocalDays(start, days);
+    const timeMin = `${start}T00:00:00-03:00`;
+    const timeMax = `${end}T23:59:59-03:00`;
+    const url = 'https://www.googleapis.com/calendar/v3/calendars/primary/events?' + new URLSearchParams({
+      timeMin, timeMax, singleEvents: 'true', orderBy: 'startTime', maxResults: '100',
+    });
+    const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) {
+      if (r.status === 401) {
+        ['gcal_refresh_token', 'gcal_access_token', 'gcal_token_expiry'].forEach(delSetting);
+        return res.json({ connected: false, eventos: [] });
+      }
+      return res.status(502).json({ error: 'Falha ao ler a agenda' });
+    }
+    const data = await r.json();
+    const eventos = (data.items || []).map((e) => {
+      const dateTime = e.start?.dateTime || null;
+      const allDay = !dateTime;
+      return {
+        titulo: e.summary || '(sem título)',
+        inicio: dateTime,
+        diaInteiro: allDay,
+        local: e.location || null,
+        dia: allDay ? (e.start?.date || null) : dayOf(dateTime),
+      };
+    }).filter((e) => e.dia);
+    res.json({ connected: true, eventos });
+  } catch (e) {
+    console.warn('[gcal] upcoming falhou:', e?.message);
+    res.status(502).json({ error: 'Falha ao ler a agenda' });
+  }
+});
+
 // ---------- helpers ----------
 async function exchange(params) {
   const r = await fetch('https://oauth2.googleapis.com/token', {
@@ -148,6 +188,22 @@ function localDate() {
   }).formatToParts(new Date());
   const g = (t) => p.find((x) => x.type === t).value;
   return `${g('year')}-${g('month')}-${g('day')}`;
+}
+
+// data local (fuso do app) de um instante ISO com hora
+function dayOf(dateTime) {
+  const p = new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date(dateTime));
+  const g = (t) => p.find((x) => x.type === t).value;
+  return `${g('year')}-${g('month')}-${g('day')}`;
+}
+
+// soma N dias a uma data YYYY-MM-DD (meia-noite UTC evita quebra de fuso)
+function addLocalDays(dateStr, n) {
+  const d = new Date(dateStr + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 }
 
 export default router;
