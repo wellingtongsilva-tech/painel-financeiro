@@ -104,6 +104,8 @@ ensureColumn('habits', 'remind_times', 'remind_times TEXT'); // CSV "08:00,12:00
 ensureColumn('tasks', 'ambito', "ambito TEXT NOT NULL DEFAULT 'pessoal'");
 ensureColumn('transactions', 'ambito', "ambito TEXT NOT NULL DEFAULT 'pessoal'");
 ensureColumn('transactions', 'recurring_id', 'recurring_id INTEGER'); // origem: conta recorrente
+ensureColumn('transactions', 'client_id', 'client_id INTEGER'); // cliente/projeto vinculado
+ensureColumn('tasks', 'client_id', 'client_id INTEGER');
 db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_ambito ON tasks(user_id, ambito, done)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_tx_ambito ON transactions(user_id, ambito, date)');
 
@@ -128,6 +130,14 @@ db.exec(`
     ambito       TEXT NOT NULL DEFAULT 'pessoal',
     limit_amount REAL NOT NULL,
     UNIQUE(user_id, ambito, category)
+  );
+  CREATE TABLE IF NOT EXISTS clients (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name       TEXT NOT NULL,
+    notes      TEXT,
+    active     INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 `);
 

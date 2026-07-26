@@ -780,12 +780,14 @@ function taskForm(existing) {
       priority: form.priority.value,
       notes: form.notes.value || null,
       ambito: ambitoWrite(),
+      client_id: form.client_id ? (form.client_id.value || null) : undefined,
     };
     if (existing) await api('tasks/' + existing.id, { method: 'PATCH', body });
     else await api('tasks', { method: 'POST', body });
     closeModal(); toast('Tarefa salva'); render();
   });
   openModal(existing ? 'Editar tarefa' : 'Nova tarefa', form);
+  injectClientSelect(form, existing?.client_id);
 }
 
 /* ============ FINANÇAS ============ */
@@ -817,6 +819,17 @@ async function renderFinancas(v) {
     <div class="stat out"><div class="v">${brl(s.saidas)}</div><div class="l">Saídas</div></div>
     <div class="stat"><div class="v">${brl(s.saldo)}</div><div class="l">Saldo</div></div>`;
   v.appendChild(stats);
+
+  // fechamento Pessoal × Empresa (só no modo "Tudo")
+  if (ambito === 'tudo') {
+    try {
+      const rep = await api('finance/report?month=' + finMonth);
+      const card = el('div', 'card');
+      card.appendChild(el('div', 'card-title', 'Fechamento do mês'));
+      card.appendChild(reportCompare(rep));
+      v.appendChild(card);
+    } catch { /* opcional */ }
+  }
 
   // a receber (recebíveis em aberto)
   try {
@@ -878,6 +891,87 @@ async function renderFinancas(v) {
     recs.forEach((r) => rc.appendChild(recurringItem(r, () => renderFinancas(v))));
     v.appendChild(rc);
   } catch { /* opcional */ }
+
+  // clientes / projetos (contexto empresa)
+  if (ambito !== 'pessoal') {
+    try {
+      const clients = await api('clients');
+      const cc = el('div', 'card');
+      const ch = el('div', 'card-title', 'Clientes / projetos');
+      const addC = el('button', 'add-btn', '+ Cliente');
+      addC.style.cssText = 'padding:4px 9px;font-size:.72rem';
+      addC.addEventListener('click', () => clientForm(null, () => renderFinancas(v)));
+      ch.appendChild(addC); cc.appendChild(ch);
+      if (!clients.length) cc.appendChild(el('p', 'empty', 'Nenhum cliente. Cadastre pra amarrar tarefas e valores a cada um.'));
+      clients.forEach((c) => cc.appendChild(clientRow(c, () => renderFinancas(v))));
+      v.appendChild(cc);
+    } catch { /* opcional */ }
+  }
+}
+
+function clientRow(c, refresh) {
+  const row = el('div', 'tx');
+  row.style.cursor = 'pointer';
+  const initials = (c.name || '?').trim().slice(0, 2).toUpperCase();
+  row.innerHTML = `<div class="tx-ic">${esc(initials)}</div>
+    <div class="tx-body"><div class="tx-desc">${esc(c.name)}${c.active ? '' : ' <span class="status-chip off">inativo</span>'}</div>
+      <div class="tx-cat">recebido ${brl(c.recebido)} · a receber ${brl(c.aReceber)} · ${c.tarefasAbertas} tarefa${c.tarefasAbertas === 1 ? '' : 's'}</div></div>
+    <div class="tx-amt in">${brl(c.recebido)}</div>`;
+  row.querySelector('.tx-body').addEventListener('click', () => clientForm(c, refresh));
+  return row;
+}
+
+function clientForm(existing, refresh) {
+  const form = el('form', 'modal-form');
+  form.innerHTML = `
+    <label>Nome<input name="name" required value="${esc(existing?.name || '')}" placeholder="Ex.: Acme Ltda / Projeto site" /></label>
+    <label>Notas<textarea name="notes" rows="2" placeholder="opcional">${esc(existing?.notes || '')}</textarea></label>
+    ${existing ? `<label class="chk"><input type="checkbox" name="active" ${existing.active ? 'checked' : ''} /> Ativo</label>` : ''}
+    <button class="btn-primary" type="submit">${existing ? 'Salvar' : 'Adicionar'}</button>
+    ${existing ? '<button type="button" class="add-btn" id="del-c" style="color:var(--neg)">Excluir</button>' : ''}
+    <p class="error" id="c-msg"></p>`;
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = { name: form.name.value, notes: form.notes.value || null };
+    if (existing) body.active = form.active.checked;
+    try {
+      if (existing) await api('clients/' + existing.id, { method: 'PATCH', body });
+      else await api('clients', { method: 'POST', body });
+      closeModal(); toast('Cliente salvo'); refresh();
+    } catch (err) { form.querySelector('#c-msg').textContent = err.message; }
+  });
+  if (existing) form.querySelector('#del-c').addEventListener('click', async () => {
+    if (!confirm('Excluir cliente? Lançamentos e tarefas são desvinculados, não apagados.')) return;
+    await api('clients/' + existing.id, { method: 'DELETE' }); closeModal(); toast('Cliente excluído'); refresh();
+  });
+  openModal(existing ? 'Editar cliente' : 'Novo cliente', form);
+}
+
+// injeta um seletor de cliente no form (tarefa/lançamento) quando há clientes e o âmbito é empresa/tudo
+async function injectClientSelect(form, selectedId) {
+  if (ambito === 'pessoal') return;
+  let clients = [];
+  try { clients = await api('clients'); } catch { return; }
+  const usable = clients.filter((c) => c.active || String(c.id) === String(selectedId));
+  if (!usable.length) return;
+  const label = el('label', '', 'Cliente / projeto');
+  const sel = el('select');
+  sel.name = 'client_id';
+  sel.innerHTML = '<option value="">— nenhum —</option>' +
+    usable.map((c) => `<option value="${c.id}" ${String(c.id) === String(selectedId) ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+  label.appendChild(sel);
+  const firstBtn = form.querySelector('button[type="submit"]');
+  form.insertBefore(label, firstBtn);
+}
+
+function reportCompare(rep) {
+  const wrap = el('div', 'report');
+  const col = (label, d) => `<div class="rep-col"><div class="rep-h">${label}</div>
+    <div class="rep-row"><span>Entrou</span><b class="pos num">${brl(d.entradas)}</b></div>
+    <div class="rep-row"><span>Saiu</span><b class="num">${brl(d.saidas)}</b></div>
+    <div class="rep-row tot"><span>Saldo</span><b class="num ${d.saldo < 0 ? 'neg' : 'pos'}">${brl(d.saldo)}</b></div></div>`;
+  wrap.innerHTML = col('Pessoal', rep.pessoal) + col('Empresa', rep.empresa) + col('Total', rep.total);
+  return wrap;
 }
 
 function budgetRow(b, refresh) {
@@ -1052,6 +1146,7 @@ function txForm(existing) {
       paid: form.pending.checked ? 0 : 1,
       due_date: form.pending.checked ? form.due_date.value || null : null,
       ambito: ambitoWrite(),
+      client_id: form.client_id ? (form.client_id.value || null) : undefined,
     };
     if (existing) await api('finance/' + existing.id, { method: 'PATCH', body });
     else await api('finance', { method: 'POST', body });
@@ -1064,6 +1159,7 @@ function txForm(existing) {
     });
   }
   openModal(existing ? 'Editar lançamento' : 'Novo lançamento', form);
+  injectClientSelect(form, existing?.client_id);
 }
 
 /* ---------- helpers de mês ---------- */

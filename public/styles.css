@@ -280,6 +280,17 @@ input[type="checkbox"],input[type="radio"]{width:18px; height:18px; accent-color
 .month-nav .m-label{font-weight:750; min-width:150px; text-align:center; text-transform:capitalize; font-size:.85rem;
   letter-spacing:-.01em}
 
+/* relatório: Pessoal × Empresa lado a lado */
+.report{display:grid; grid-template-columns:repeat(3,1fr); border:1px solid var(--line); border-radius:var(--radius-2); overflow:hidden}
+.rep-col{padding:10px 11px; border-right:1px solid var(--line)}
+.rep-col:last-child{border-right:0; background:var(--surface-2)}
+.rep-h{font-size:.58rem; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); font-weight:700; margin-bottom:6px}
+.rep-row{display:flex; justify-content:space-between; align-items:baseline; gap:5px; font-size:.68rem; color:var(--muted); margin-top:5px}
+.rep-row b{font-size:.78rem; color:var(--ink); font-weight:700}
+.rep-row b.pos{color:var(--pos)} .rep-row b.neg{color:var(--neg)}
+.rep-row.tot{margin-top:7px; padding-top:6px; border-top:1px solid var(--line)}
+.rep-row.tot span{color:var(--ink-2); font-weight:600}
+
 /* toggle segmentado */
 .seg{display:flex; background:var(--surface-2); border:1px solid var(--line-2); border-radius:var(--radius-2); padding:3px}
 .seg button{flex:1; border:0; background:transparent; color:var(--muted); padding:9px; border-radius:var(--radius-3);

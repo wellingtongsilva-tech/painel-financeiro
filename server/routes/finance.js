@@ -9,6 +9,7 @@ router.use(requireAuth);
 // Âmbito: 'pessoal' | 'empresa'. Query inválida/ausente => sem filtro (tudo).
 const ambFilter = (a) => (a === 'empresa' ? 'empresa' : a === 'pessoal' ? 'pessoal' : null);
 const ambStore = (a) => (a === 'empresa' ? 'empresa' : 'pessoal'); // grava sempre um dos dois
+const cid = (v) => (v ? Number(v) : null); // client_id normalizado (0/''/null → null)
 
 // Lançamentos de um mês. ?month=YYYY-MM (padrão: mês atual) &ambito=pessoal|empresa
 router.get('/', (req, res) => {
@@ -38,6 +39,31 @@ router.get('/pending', (req, res) => {
   res.json(rows);
 });
 
+// Fechamento do mês: Pessoal × Empresa lado a lado. ?month=YYYY-MM
+router.get('/report', (req, res) => {
+  const month = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month : new Date().toISOString().slice(0, 7);
+  const per = (amb) => {
+    const rows = db
+      .prepare("SELECT type, amount FROM transactions WHERE user_id = ? AND substr(date,1,7) = ? AND ambito = ?")
+      .all(req.user.id, month, amb);
+    let e = 0, s = 0;
+    for (const t of rows) t.type === 'entrada' ? (e += t.amount) : (s += t.amount);
+    return { entradas: round(e), saidas: round(s), saldo: round(e - s) };
+  };
+  const pessoal = per('pessoal');
+  const empresa = per('empresa');
+  res.json({
+    month,
+    pessoal,
+    empresa,
+    total: {
+      entradas: round(pessoal.entradas + empresa.entradas),
+      saidas: round(pessoal.saidas + empresa.saidas),
+      saldo: round(pessoal.saldo + empresa.saldo),
+    },
+  });
+});
+
 // Contas a RECEBER em aberto (entrada + paid = 0), ordenadas por previsão
 router.get('/receivable', (req, res) => {
   const amb = ambFilter(req.query.ambito);
@@ -51,7 +77,7 @@ router.get('/receivable', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { type, amount, category, description, date, paid, due_date, ambito } = req.body || {};
+  const { type, amount, category, description, date, paid, due_date, ambito, client_id } = req.body || {};
   if (!['entrada', 'saida'].includes(type)) {
     return res.status(400).json({ error: 'Tipo deve ser "entrada" ou "saida"' });
   }
@@ -60,8 +86,8 @@ router.post('/', (req, res) => {
 
   const info = db
     .prepare(
-      `INSERT INTO transactions (user_id, type, amount, category, description, date, paid, due_date, ambito)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO transactions (user_id, type, amount, category, description, date, paid, due_date, ambito, client_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       req.user.id,
@@ -72,7 +98,8 @@ router.post('/', (req, res) => {
       date || new Date().toISOString().slice(0, 10),
       paid === 0 || paid === false ? 0 : 1,
       due_date || null,
-      ambStore(ambito)
+      ambStore(ambito),
+      cid(client_id)
     );
   res.json(db.prepare('SELECT * FROM transactions WHERE id = ?').get(info.lastInsertRowid));
 });
@@ -80,9 +107,9 @@ router.post('/', (req, res) => {
 router.patch('/:id', (req, res) => {
   const tx = getOwned(req);
   if (!tx) return res.status(404).json({ error: 'Lançamento não encontrado' });
-  const { type, amount, category, description, date, paid, due_date, ambito } = req.body || {};
+  const { type, amount, category, description, date, paid, due_date, ambito, client_id } = req.body || {};
   db.prepare(
-    `UPDATE transactions SET type = ?, amount = ?, category = ?, description = ?, date = ?, paid = ?, due_date = ?, ambito = ?
+    `UPDATE transactions SET type = ?, amount = ?, category = ?, description = ?, date = ?, paid = ?, due_date = ?, ambito = ?, client_id = ?
      WHERE id = ?`
   ).run(
     type ?? tx.type,
@@ -93,6 +120,7 @@ router.patch('/:id', (req, res) => {
     paid != null ? (paid ? 1 : 0) : tx.paid,
     due_date ?? tx.due_date,
     ambito ? ambStore(ambito) : tx.ambito,
+    client_id !== undefined ? cid(client_id) : tx.client_id,
     tx.id
   );
   res.json(db.prepare('SELECT * FROM transactions WHERE id = ?').get(tx.id));

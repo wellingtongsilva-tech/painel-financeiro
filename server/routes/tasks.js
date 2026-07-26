@@ -8,6 +8,7 @@ router.use(requireAuth);
 // ?scope=today | open | all  (padrão: open)  &ambito=pessoal|empresa
 const ambFilter = (a) => (a === 'empresa' ? 'empresa' : a === 'pessoal' ? 'pessoal' : null);
 const ambStore = (a) => (a === 'empresa' ? 'empresa' : 'pessoal');
+const cid = (v) => (v ? Number(v) : null);
 
 router.get('/', (req, res) => {
   const scope = req.query.scope || 'open';
@@ -37,11 +38,11 @@ router.get('/', (req, res) => {
 });
 
 router.post('/', (req, res) => {
-  const { title, notes, due_date, priority, ambito } = req.body || {};
+  const { title, notes, due_date, priority, ambito, client_id } = req.body || {};
   if (!title) return res.status(400).json({ error: 'Título é obrigatório' });
   const info = db
     .prepare(
-      'INSERT INTO tasks (user_id, title, notes, due_date, priority, ambito) VALUES (?, ?, ?, ?, ?, ?)'
+      'INSERT INTO tasks (user_id, title, notes, due_date, priority, ambito, client_id) VALUES (?, ?, ?, ?, ?, ?, ?)'
     )
     .run(
       req.user.id,
@@ -49,7 +50,8 @@ router.post('/', (req, res) => {
       notes || null,
       due_date || null,
       validPriority(priority),
-      ambStore(ambito)
+      ambStore(ambito),
+      cid(client_id)
     );
   res.json(db.prepare('SELECT * FROM tasks WHERE id = ?').get(info.lastInsertRowid));
 });
@@ -57,15 +59,16 @@ router.post('/', (req, res) => {
 router.patch('/:id', (req, res) => {
   const task = getOwned(req);
   if (!task) return res.status(404).json({ error: 'Tarefa não encontrada' });
-  const { title, notes, due_date, priority, ambito } = req.body || {};
+  const { title, notes, due_date, priority, ambito, client_id } = req.body || {};
   db.prepare(
-    'UPDATE tasks SET title = ?, notes = ?, due_date = ?, priority = ?, ambito = ? WHERE id = ?'
+    'UPDATE tasks SET title = ?, notes = ?, due_date = ?, priority = ?, ambito = ?, client_id = ? WHERE id = ?'
   ).run(
     title ?? task.title,
     notes ?? task.notes,
     due_date ?? task.due_date,
     priority ? validPriority(priority) : task.priority,
     ambito ? ambStore(ambito) : task.ambito,
+    client_id !== undefined ? cid(client_id) : task.client_id,
     task.id
   );
   res.json(db.prepare('SELECT * FROM tasks WHERE id = ?').get(task.id));

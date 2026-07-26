@@ -15,6 +15,7 @@ import agentRoutes from './routes/agent.js';
 import gcalRoutes from './routes/gcal.js';
 import recurringRoutes from './routes/recurring.js';
 import budgetsRoutes from './routes/budgets.js';
+import clientsRoutes from './routes/clients.js';
 import { startScheduler } from './reminders.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -38,6 +39,7 @@ app.use('/api/agent', agentRoutes);
 app.use('/api/gcal', gcalRoutes);
 app.use('/api/recurring', recurringRoutes);
 app.use('/api/budgets', budgetsRoutes);
+app.use('/api/clients', clientsRoutes);
 
 // --- PWA estática ---
 app.use(express.static(PUBLIC_DIR));
