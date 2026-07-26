@@ -312,6 +312,16 @@ input[type="checkbox"],input[type="radio"]{width:18px; height:18px; accent-color
 .cal-dot{position:absolute; bottom:6px; left:50%; transform:translateX(-50%); width:5px; height:5px; border-radius:50%; background:var(--accent)}
 .cal-cell.sel .cal-dot{background:var(--on-accent)}
 
+/* importação de extrato */
+.imp-row{display:grid; grid-template-columns:auto auto 1fr auto; align-items:center; gap:9px; padding:8px 2px;
+  border-bottom:1px solid var(--line); font-size:.82rem; cursor:pointer; text-transform:none; letter-spacing:normal; font-weight:400}
+.imp-row:last-child{border-bottom:0}
+.imp-row input{width:16px; height:16px}
+.imp-d{font-family:var(--mono); font-size:.7rem; color:var(--muted)}
+.imp-desc{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink)}
+.imp-amt{font-family:var(--mono); font-variant-numeric:tabular-nums; font-weight:700; white-space:nowrap}
+.imp-amt.pos{color:var(--pos)} .imp-amt.neg{color:var(--neg)}
+
 /* ---------- Modal ---------- */
 .modal{position:fixed; inset:0; background:rgba(0,0,0,.5); display:grid; place-items:end center; z-index:50}
 .modal-card{background:var(--surface); width:100%; max-width:480px; border:1px solid var(--line); border-bottom:0;

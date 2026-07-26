@@ -831,9 +831,14 @@ async function renderFinancas(v) {
   v.innerHTML = '';
   const head = el('div', 'section-h');
   head.innerHTML = '<h2>Finanças</h2>';
+  const actions = el('div');
+  actions.style.cssText = 'display:flex;gap:6px';
+  const imp = el('button', 'add-btn', 'Importar');
+  imp.addEventListener('click', () => importForm());
   const add = el('button', 'add-btn', '+ Lançamento');
   add.addEventListener('click', () => txForm());
-  head.appendChild(add);
+  actions.append(imp, add);
+  head.appendChild(actions);
   v.appendChild(head);
 
   // navegação de mês
@@ -1194,6 +1199,70 @@ function txForm(existing) {
   }
   openModal(existing ? 'Editar lançamento' : 'Novo lançamento', form);
   injectClientSelect(form, existing?.client_id);
+}
+
+/* ---------- importar extrato bancário (OFX/CSV) ---------- */
+function importForm() {
+  const form = el('div', 'modal-form');
+  form.innerHTML = `
+    <p class="hint">Exporte o extrato no app/site do banco (arquivo <b>OFX</b> ou <b>CSV</b>) e selecione abaixo. Caixa e PagBank costumam ter OFX; PicPay e InfinitePay, CSV. O arquivo é lido aqui e vira lançamentos — nada é enviado pra fora.</p>
+    <div class="row2">
+      <label>Banco<select id="imp-bank"><option>Caixa</option><option>PagBank</option><option>PicPay</option><option>InfinitePay</option><option>Outro</option></select></label>
+      <label>Âmbito<select id="imp-amb"><option value="pessoal">Pessoal</option><option value="empresa">Empresa</option></select></label>
+    </div>
+    <label>Arquivo (.ofx / .csv)<input type="file" id="imp-file" accept=".ofx,.csv,.txt,text/csv,application/x-ofx" /></label>
+    <div id="imp-result"></div>`;
+  form.querySelector('#imp-amb').value = ambitoWrite();
+  const result = form.querySelector('#imp-result');
+  form.querySelector('#imp-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    result.innerHTML = '<p class="empty">Lendo…</p>';
+    let text;
+    try { text = await file.text(); } catch { result.innerHTML = '<p class="error">Não consegui ler o arquivo.</p>'; return; }
+    try {
+      const prev = await api('import/preview', { method: 'POST', body: { text } });
+      renderImportPreview(result, prev, form);
+    } catch (err) { result.innerHTML = `<p class="error">${esc(err.message)}</p>`; }
+  });
+  openModal('Importar extrato', form);
+}
+
+function renderImportPreview(container, prev, form) {
+  container.innerHTML = '';
+  container.appendChild(el('p', 'hint', `Formato ${prev.format.toUpperCase()} · ${prev.novos} novo(s) · ${prev.duplicados} já importado(s).`));
+  if (!prev.transactions.length) {
+    container.appendChild(el('p', 'empty', 'Nenhum lançamento reconhecido neste arquivo.'));
+    return;
+  }
+  const list = el('div', 'card');
+  list.style.cssText = 'max-height:44vh;overflow:auto;margin:8px 0;padding:6px 12px';
+  prev.transactions.forEach((t, i) => {
+    const row = el('label', 'imp-row');
+    row.innerHTML = `<input type="checkbox" ${t.dup ? '' : 'checked'} data-i="${i}" />
+      <span class="imp-d">${fmtDate(t.date)}</span>
+      <span class="imp-desc">${esc(t.description)}${t.dup ? ' <span class="status-chip off">dup</span>' : ''}</span>
+      <span class="imp-amt ${t.type === 'entrada' ? 'pos' : 'neg'}">${t.type === 'entrada' ? '+' : '−'}${brl(t.amount)}</span>`;
+    list.appendChild(row);
+  });
+  container.appendChild(list);
+  const btn = el('button', 'btn-primary', 'Importar selecionados');
+  btn.addEventListener('click', async () => {
+    const chosen = [];
+    $$('input[type=checkbox][data-i]', list).forEach((c) => { if (c.checked) chosen.push(prev.transactions[Number(c.dataset.i)]); });
+    if (!chosen.length) { toast('Nada selecionado'); return; }
+    btn.disabled = true;
+    try {
+      const r = await api('import/commit', {
+        method: 'POST',
+        body: { ambito: form.querySelector('#imp-amb').value, category: 'Extrato ' + form.querySelector('#imp-bank').value, transactions: chosen },
+      });
+      closeModal();
+      toast(`${r.imported} importado(s)${r.skipped ? `, ${r.skipped} pulado(s)` : ''}`);
+      render();
+    } catch (err) { toast(err.message); btn.disabled = false; }
+  });
+  container.appendChild(btn);
 }
 
 /* ---------- helpers de mês ---------- */

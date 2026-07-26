@@ -106,6 +106,8 @@ ensureColumn('transactions', 'ambito', "ambito TEXT NOT NULL DEFAULT 'pessoal'")
 ensureColumn('transactions', 'recurring_id', 'recurring_id INTEGER'); // origem: conta recorrente
 ensureColumn('transactions', 'client_id', 'client_id INTEGER'); // cliente/projeto vinculado
 ensureColumn('tasks', 'client_id', 'client_id INTEGER');
+ensureColumn('transactions', 'import_key', 'import_key TEXT'); // dedup de extrato importado (FITID/hash)
+db.exec('CREATE INDEX IF NOT EXISTS idx_tx_import ON transactions(user_id, import_key)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_ambito ON tasks(user_id, ambito, done)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_tx_ambito ON transactions(user_id, ambito, date)');
 
